@@ -17,7 +17,7 @@ export interface ApiProperty {
     featured: boolean;
     is_active: boolean;
     apartment_count: number;
-    images: any[];
+    images: { id: number; image: string; image_url: string; is_primary: boolean; order: number; category?: string }[];
     created_at: string;
     updated_at: string;
 }

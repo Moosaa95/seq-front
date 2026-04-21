@@ -11,11 +11,14 @@ interface PropertyBuildingCardProps {
   index: number;
 }
 
+function resolveImage(images: ApiProperty['images']): string {
+  if (!images || images.length === 0) return '/arusha-101/front-1.jpg';
+  const primary = images.find((img) => img.is_primary) ?? images[0];
+  return primary.image_url || primary.image || '/arusha-101/front-1.jpg';
+}
+
 export default function PropertyBuildingCard({ property, index }: PropertyBuildingCardProps) {
-  const images = property.images || [];
-  const firstImage = images.length > 0
-    ? (typeof images[0] === 'string' ? images[0] : (images[0] as any).image)
-    : '';
+  const coverImage = resolveImage(property.images);
   const locationName = property.location_details?.name || '';
   const href = `/properties/${property.id}`;
 
@@ -30,7 +33,7 @@ export default function PropertyBuildingCard({ property, index }: PropertyBuildi
         <Link href={href}>
           <div className="w-full h-full relative">
             <ImageWithLoader
-              src={firstImage}
+              src={coverImage}
               alt={property.name}
               fill
               className="object-cover group-hover:scale-110 transition-transform duration-500"
