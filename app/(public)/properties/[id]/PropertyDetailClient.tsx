@@ -95,8 +95,8 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
   }
 
   const amenitiesList = Array.isArray(property.amenities) ? property.amenities : [];
-  const displayImages = (property.images || []).map((img: any) =>
-    typeof img === 'string' ? img : img.image,
+  const displayImages = (property.images || []).map((img) =>
+    img.image_url || img.image,
   );
 
   const hasMap = property.latitude && property.longitude;

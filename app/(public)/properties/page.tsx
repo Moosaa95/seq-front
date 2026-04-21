@@ -23,7 +23,7 @@ export default function PropertiesPage() {
       <section className="relative min-h-[35vh] sm:min-h-[40vh] md:h-[40vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <ImageWithLoader
-            src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&q=80"
+            src="/arusha-101/front-1.jpg"
             alt="Properties"
             fill
             className="object-cover brightness-50"
