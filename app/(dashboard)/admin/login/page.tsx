@@ -42,7 +42,7 @@ export default function AdminLogin() {
         router.push('/admin');
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('Login error:', error?.status, error?.data);
       toast.error(error?.data?.detail || error?.data?.message || 'Invalid email or password');
     }
   };

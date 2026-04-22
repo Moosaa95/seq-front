@@ -102,7 +102,7 @@ function ApartmentCard({ apartment, index, onBook }: ApartmentCardProps) {
 
                 <button
                     onClick={() => onBook(apartment)}
-                    disabled={!apartment.is_available}
+                    disabled={apartment.is_available === false}
                     className="w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white shadow-md hover:shadow-emerald-500/30 hover:shadow-lg"
                 >
                     <Calendar className="w-4 h-4" />

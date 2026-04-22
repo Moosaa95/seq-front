@@ -23,6 +23,7 @@ import AdminBookingModal from '@/components/admin/AdminBookingModal';
 import CancellationModal from '@/components/admin/bookings/CancellationModal';
 import BookingsCalendar from '@/components/admin/BookingsCalendar';
 import { useGetBookingsQuery, useUpdateBookingStatusMutation } from '@/lib/store/api/adminApi';
+import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
 import { toast } from 'sonner';
 
 type ViewMode = 'calendar' | 'list';
@@ -52,9 +53,11 @@ export default function BookingsManagement() {
 
   // RTK Query hooks
   const { data: bookingsData, isLoading, error, refetch } = useGetBookingsQuery({ page_size: 100 });
+  const { data: apartmentsData } = useGetApartmentsQuery({ page_size: 200 });
   const [updateBookingStatus] = useUpdateBookingStatusMutation();
 
   const bookings = bookingsData?.results || [];
+  const apartments = apartmentsData?.results || [];
 
   const handleStatusUpdate = async (
     bookingId: string,
@@ -78,7 +81,7 @@ export default function BookingsManagement() {
     const matchesSearch =
       booking.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.apartment_details.title.toLowerCase().includes(searchTerm.toLowerCase());
+      (booking.apartment_details?.title ?? '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
 
@@ -214,6 +217,7 @@ export default function BookingsManagement() {
         /* Calendar View */
         <BookingsCalendar
           bookings={filteredBookings}
+          apartments={apartments}
           onStatusChange={handleStatusUpdate}
         />
       ) : filteredBookings.length === 0 ? (
@@ -239,11 +243,11 @@ export default function BookingsManagement() {
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-bold text-gray-900 mb-1">
-                        {booking.apartment_details.title}
+                        {booking.apartment_details?.title ?? '—'}
                       </h3>
                       <div className="flex items-center text-gray-600 text-sm">
                         <MapPin className="h-4 w-4 mr-1" />
-                        {booking.apartment_details.location}
+                        {booking.apartment_details?.location ?? ''}
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">

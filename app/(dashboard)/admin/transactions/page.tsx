@@ -242,7 +242,7 @@ export default function TransactionsManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900 max-w-xs truncate">
-                        {payment.booking_details.apartment_details.title}
+                        {payment.booking_details.apartment_details?.title ?? '—'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

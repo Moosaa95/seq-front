@@ -83,10 +83,10 @@ export default function EditPropertyPage() {
         description: property.description,
         amenities: Array.isArray(property.amenities) ? property.amenities.join(', ') : property.amenities || '',
         entity: property.entity || 'Sequoia Projects',
-        agentName: property.agent.name,
-        agentPhone: property.agent.phone,
-        agentMobile: property.agent.mobile,
-        agentEmail: property.agent.email,
+        agentName: property.agent?.name ?? '',
+        agentPhone: property.agent?.phone ?? '',
+        agentMobile: property.agent?.mobile ?? '',
+        agentEmail: property.agent?.email ?? '',
         featured: property.featured,
       });
 

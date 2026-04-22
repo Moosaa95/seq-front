@@ -155,12 +155,12 @@ function LocationsTab() {
         },
         {
             header: 'State',
-            accessorKey: 'state_name',
+            accessorKey: 'state',
             cell: ({ getValue }: any) => <span className="text-gray-700">{getValue() || '-'}</span>
         },
         {
             header: 'Country',
-            accessorKey: 'country_name',
+            accessorKey: 'country',
             cell: ({ getValue }: any) => <span className="text-gray-700">{getValue() || '-'}</span>
         },
         {

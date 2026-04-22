@@ -6,8 +6,9 @@ export interface Location {
     id: number;
     name: string;
     address: string | null;
-    state_name: string | null;
-    country_name: string | null;
+    state: string | null;
+    lga: string | null;
+    country: string | null;
     is_active: boolean;
     inventory_count: number;
     created_at: string;
@@ -84,6 +85,7 @@ export interface CreateLocationInput {
     name: string;
     address?: string;
     state?: string;
+    lga?: string;
     country?: string;
     is_active?: boolean;
 }

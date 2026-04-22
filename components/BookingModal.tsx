@@ -52,7 +52,18 @@ export default function BookingModal({ isOpen, onClose, propertyTitle, propertyI
 
   const paystackConfig = paystackConfigData ? { publicKey: paystackConfigData.public_key } : null;
   const currentBooking = bookingResponse?.booking;
-  const error = bookingErrorObj ? (('data' in (bookingErrorObj as any) ? (bookingErrorObj as any).data.message || 'Booking failed' : 'Booking failed')) : null;
+  const error = (() => {
+    if (!bookingErrorObj) return null;
+    const data = 'data' in (bookingErrorObj as any) ? (bookingErrorObj as any).data : null;
+    if (!data) return 'Booking failed';
+    if (data.detail) return data.detail;
+    if (data.message) return data.message;
+    // Field-level DRF errors: { check_in: ["msg"], ... }
+    const msgs = Object.values(data)
+      .flatMap(v => Array.isArray(v) ? v : [String(v)])
+      .filter(Boolean);
+    return msgs[0] ?? 'Booking failed';
+  })();
   const loading = bookingLoading;
   const success = bookingSuccess;
 

@@ -57,6 +57,7 @@ export interface ApiApartment {
     images: {
         id: number;
         image: string;
+        image_url: string;
         category: string;
         is_primary: boolean;
         order: number;

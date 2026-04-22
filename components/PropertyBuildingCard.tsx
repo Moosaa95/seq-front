@@ -85,7 +85,7 @@ export default function PropertyBuildingCard({ property, index }: PropertyBuildi
             href={href}
             className="flex items-center text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
           >
-            View Units <ArrowRight className="w-4 h-4 ml-1" />
+            View Apartments <ArrowRight className="w-4 h-4 ml-1" />
           </Link>
         </div>
       </div>

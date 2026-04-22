@@ -14,9 +14,10 @@ interface PropertyCardProps {
 export default function PropertyCard({ property, index, linkHref }: PropertyCardProps) {
   const href = linkHref ?? `/properties/${property.id}`;
   const images = property.images || [];
-  const firstImage = images.length > 0
-    ? (typeof images[0] === 'string' ? images[0] : images[0].image)
-    : '';
+  const primaryImg = images.find((img: any) => img.is_primary) ?? images[0];
+  const firstImage = property.primary_image
+    || (primaryImg ? (primaryImg.image_url || primaryImg.image) : '')
+    || '/arusha-101/living-room.jpg';
 
   const livingRooms = property.livingRooms || property.living_rooms;
   const area = property.area;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { useCreateLocationMutation } from '@/lib/store/api/inventoryApi';
 import { toast } from 'sonner';
@@ -10,25 +10,28 @@ interface AddLocationModalProps {
     onClose: () => void;
 }
 
+const INITIAL_FORM = {
+    name: '',
+    address: '',
+    state: 'Foreign',
+    lga: '',
+    country: '',
+    is_active: true,
+};
+
 export default function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
     const [createLocation, { isLoading }] = useCreateLocationMutation();
-    const [formData, setFormData] = useState({
-        name: '',
-        address: '',
-        state: 'FCT',
-        country: 'Nigeria',
-        is_active: true
-    });
+    const [formData, setFormData] = useState(INITIAL_FORM);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             await createLocation(formData).unwrap();
             toast.success('Location created successfully');
-            setFormData({ name: '', address: '', state: 'FCT', country: 'Nigeria', is_active: true });
+            setFormData(INITIAL_FORM);
             onClose();
         } catch (error: any) {
-            console.error("Failed to create location", error);
+            console.error('Failed to create location', error);
             toast.error('Failed to create location');
         }
     };
@@ -66,19 +69,30 @@ export default function AddLocationModal({ isOpen, onClose }: AddLocationModalPr
                                 value={formData.state}
                                 onChange={e => setFormData({ ...formData, state: e.target.value })}
                                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-                                placeholder="State"
+                                placeholder="e.g. Foreign"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">LGA</label>
                             <input
                                 type="text"
-                                value={formData.country}
-                                onChange={e => setFormData({ ...formData, country: e.target.value })}
+                                value={formData.lga}
+                                onChange={e => setFormData({ ...formData, lga: e.target.value })}
                                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-                                placeholder="Country"
+                                placeholder="Local Government Area"
                             />
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                        <input
+                            type="text"
+                            value={formData.country}
+                            onChange={e => setFormData({ ...formData, country: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                            placeholder="e.g. Nigeria"
+                        />
                     </div>
 
                     <div>

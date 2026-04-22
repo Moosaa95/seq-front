@@ -16,6 +16,7 @@ interface BuildingFormData {
   amenities: string;
   entity: string;
   featured: boolean;
+  is_active: boolean;
 }
 
 export default function AddBuildingPage() {
@@ -29,6 +30,7 @@ export default function AddBuildingPage() {
     amenities: '',
     entity: 'Sequoia Projects',
     featured: false,
+    is_active: true,
   });
 
   const { data: locations = [], isLoading: locationsLoading } = useGetLocationsQuery({});
@@ -58,6 +60,7 @@ export default function AddBuildingPage() {
       formDataToSend.append('location_id', formData.location_id);
       formDataToSend.append('entity', formData.entity);
       formDataToSend.append('featured', formData.featured.toString());
+      formDataToSend.append('is_active', formData.is_active.toString());
 
       // Amenities as JSON array string
       const amenitiesList = formData.amenities
@@ -145,7 +148,7 @@ export default function AddBuildingPage() {
                       <option value="">Select a location...</option>
                       {locations.map((loc: any) => (
                         <option key={loc.id} value={loc.id}>
-                          {loc.name} {loc.state_name ? `(${loc.state_name})` : ''}
+                          {loc.name} {loc.state ? `(${loc.state})` : ''}
                         </option>
                       ))}
                     </select>
@@ -207,18 +210,33 @@ export default function AddBuildingPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 />
               </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="featured"
-                  name="featured"
-                  checked={formData.featured}
-                  onChange={handleChange}
-                  className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
-                />
-                <label htmlFor="featured" className="text-sm font-medium text-gray-700">
-                  Mark as Featured Building
-                </label>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="featured"
+                    name="featured"
+                    checked={formData.featured}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="featured" className="text-sm font-medium text-gray-700">
+                    Mark as Featured Building
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="is_active"
+                    name="is_active"
+                    checked={formData.is_active}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+                    Active
+                  </label>
+                </div>
               </div>
             </div>
           </div>

@@ -1,427 +1,379 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
-import { Calendar, dateFnsLocalizer, View, SlotInfo } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, addDays } from 'date-fns';
-import { enUS } from 'date-fns/locale';
-import { X, User, Mail, Phone, MapPin, Calendar as CalendarIcon, DollarSign } from 'lucide-react';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-
-// Setup date-fns localizer
-const locales = { 'en-US': enUS };
-const localizer = dateFnsLocalizer({
+import { useState, useMemo, useRef } from 'react';
+import {
     format,
-    parse,
-    startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 0 }),
-    getDay,
-    locales,
-});
-
-// Types
-interface BookingEvent {
-    id: string;
-    title: string;
-    start: Date;
-    end: Date;
-    resource: {
-        booking_id: string;
-        name: string;
-        email: string;
-        phone: string;
-        apartment_title: string;
-        apartment_location: string;
-        status: string;
-        payment_status: string;
-        total_amount: string;
-        currency: string;
-        guests: number;
-        nights: number;
-        occupancy_status?: string;
-        checked_in_at?: string;
-        checked_out_at?: string;
-        special_requests?: string;
-    };
-}
-
-interface ApiBooking {
-    booking_id: string;
-    apartment_details: {
-        title: string;
-        location: string;
-    };
-    name: string;
-    email: string;
-    phone: string;
-    check_in: string;
-    check_out: string;
-    guests: number;
-    nights: number;
-    total_amount: string;
-    currency: string;
-    status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-    payment_status: string;
-    occupancy_status?: string;
-    checked_in_at?: string;
-    checked_out_at?: string;
-    special_requests?: string;
-}
+    startOfMonth,
+    endOfMonth,
+    eachDayOfInterval,
+    addMonths,
+    subMonths,
+    differenceInCalendarDays,
+    parseISO,
+    isToday,
+    isSameMonth,
+} from 'date-fns';
+import { ChevronLeft, ChevronRight, X, User, Mail, Phone, MapPin, DollarSign, Calendar as CalendarIcon } from 'lucide-react';
+import type { ApiBooking } from '@/lib/store/api/adminApi';
+import type { ApiApartment } from '@/lib/store/api/propertyApi';
 
 interface BookingsCalendarProps {
     bookings: ApiBooking[];
-    onSelectBooking?: (bookingId: string) => void;
+    apartments: ApiApartment[];
     onStatusChange?: (bookingId: string, status: 'pending' | 'confirmed' | 'cancelled' | 'completed') => void;
 }
 
-// Status colors
-const statusColors: Record<string, { bg: string; border: string; text: string }> = {
-    pending: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
-    confirmed: { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
-    cancelled: { bg: '#FEE2E2', border: '#EF4444', text: '#991B1B' },
-    completed: { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+const CELL_W = 44;  // px per day column
+const ROW_H = 44;   // px per apartment row
+const SIDEBAR_W = 220;
+
+const STATUS_STYLES: Record<string, { bar: string; text: string }> = {
+    confirmed: { bar: 'bg-emerald-500', text: 'text-white' },
+    pending:   { bar: 'bg-amber-400',   text: 'text-amber-900' },
+    cancelled: { bar: 'bg-red-400',     text: 'text-white' },
+    completed: { bar: 'bg-blue-500',    text: 'text-white' },
 };
 
-export default function BookingsCalendar({ bookings, onSelectBooking, onStatusChange }: BookingsCalendarProps) {
-    const [selectedEvent, setSelectedEvent] = useState<BookingEvent | null>(null);
-    const [showModal, setShowModal] = useState(false);
-    const [currentView, setCurrentView] = useState<View>('month');
-    const [currentDate, setCurrentDate] = useState(new Date());
+export default function BookingsCalendar({ bookings, apartments, onStatusChange }: BookingsCalendarProps) {
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [selectedBooking, setSelectedBooking] = useState<ApiBooking | null>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Convert bookings to calendar events
-    const events: BookingEvent[] = useMemo(() => {
-        return bookings.map((booking) => {
-            const checkIn = new Date(booking.check_in);
-            const checkOut = new Date(booking.check_out);
+    // Days in the current month
+    const days = useMemo(() => {
+        return eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
+    }, [currentMonth]);
 
-            return {
-                id: booking.booking_id,
-                title: `${booking.name} - ${booking.apartment_details.title}`,
-                start: checkIn,
-                end: checkOut,
-                resource: {
-                    booking_id: booking.booking_id,
-                    name: booking.name,
-                    email: booking.email,
-                    phone: booking.phone,
-                    apartment_title: booking.apartment_details.title,
-                    apartment_location: booking.apartment_details.location,
-                    status: booking.status,
-                    payment_status: booking.payment_status,
-                    total_amount: booking.total_amount,
-                    currency: booking.currency,
-                    guests: booking.guests,
-                    nights: booking.nights,
-                    occupancy_status: booking.occupancy_status,
-                    checked_in_at: booking.checked_in_at,
-                    checked_out_at: booking.checked_out_at,
-                    special_requests: booking.special_requests,
-                },
-            };
+    const rangeStart = days[0];
+    const totalDays = days.length;
+
+    // Group apartments by parent property name
+    const groups = useMemo(() => {
+        const map = new Map<string, { propertyName: string; propertyId: string | null; apts: ApiApartment[] }>();
+
+        // Apartments with a parent property
+        for (const apt of apartments) {
+            const propId = apt.parent_property ?? '__standalone__';
+            const propName = apt.property_details?.name ?? (apt.parent_property ? `Property ${apt.parent_property}` : 'Standalone Units');
+            if (!map.has(propId)) map.set(propId, { propertyName: propName, propertyId: apt.parent_property, apts: [] });
+            map.get(propId)!.apts.push(apt);
+        }
+
+        // Sort standalone last
+        return Array.from(map.values()).sort((a, b) => {
+            if (a.propertyId === null) return 1;
+            if (b.propertyId === null) return -1;
+            return a.propertyName.localeCompare(b.propertyName);
         });
+    }, [apartments]);
+
+    // Index bookings by apartment id
+    const bookingsByApt = useMemo(() => {
+        const idx = new Map<string, ApiBooking[]>();
+        for (const b of bookings) {
+            if (!b.apartment_details) continue;
+            const id = b.apartment_details.id;
+            if (!idx.has(id)) idx.set(id, []);
+            idx.get(id)!.push(b);
+        }
+        return idx;
     }, [bookings]);
 
-    // Event style getter - color code by status
-    const eventStyleGetter = useCallback((event: BookingEvent) => {
-        const colors = statusColors[event.resource.status] || statusColors.pending;
+    // Compute bar position for a booking within current month view
+    function barGeometry(booking: ApiBooking) {
+        const checkIn = parseISO(booking.check_in);
+        const checkOut = parseISO(booking.check_out);
+
+        // Clamp to visible range
+        const startDay = Math.max(0, differenceInCalendarDays(checkIn, rangeStart));
+        const endDay = Math.min(totalDays, differenceInCalendarDays(checkOut, rangeStart));
+        const width = endDay - startDay;
+        if (width <= 0) return null;
+
         return {
-            style: {
-                backgroundColor: colors.bg,
-                borderLeft: `4px solid ${colors.border}`,
-                color: colors.text,
-                borderRadius: '4px',
-                padding: '2px 6px',
-                fontSize: '12px',
-                fontWeight: '500',
-            },
+            left: startDay * CELL_W,
+            width: width * CELL_W - 2, // 2px gap
+            clippedLeft: differenceInCalendarDays(checkIn, rangeStart) < 0,
         };
-    }, []);
+    }
 
-    // Handle event selection
-    const handleSelectEvent = useCallback((event: BookingEvent) => {
-        setSelectedEvent(event);
-        setShowModal(true);
-        onSelectBooking?.(event.id);
-    }, [onSelectBooking]);
-
-    // Handle status change from modal
-    const handleStatusChange = useCallback((status: 'pending' | 'confirmed' | 'cancelled' | 'completed') => {
-        if (selectedEvent && onStatusChange) {
-            onStatusChange(selectedEvent.id, status);
-            setShowModal(false);
-        }
-    }, [selectedEvent, onStatusChange]);
-
-    // Status badge component
-    const StatusBadge = ({ status }: { status: string }) => {
-        const colors = statusColors[status] || statusColors.pending;
-        return (
-            <span
-                className="px-2 py-1 rounded-full text-xs font-semibold capitalize"
-                style={{ backgroundColor: colors.bg, color: colors.text }}
-            >
-                {status}
-            </span>
-        );
-    };
+    const today = useMemo(() => new Date(), []);
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            {/* Legend */}
-            <div className="flex flex-wrap gap-4 mb-4 pb-4 border-b border-gray-200">
-                <span className="text-sm text-gray-600 font-medium">Status:</span>
-                {Object.entries(statusColors).map(([status, colors]) => (
-                    <div key={status} className="flex items-center gap-1.5">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Month navigation */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setCurrentMonth(m => subMonths(m, 1))}
+                        className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        <ChevronLeft className="h-4 w-4 text-gray-600" />
+                    </button>
+                    <h2 className="text-base font-semibold text-gray-900 min-w-[140px] text-center">
+                        {format(currentMonth, 'MMMM yyyy')}
+                    </h2>
+                    <button
+                        onClick={() => setCurrentMonth(m => addMonths(m, 1))}
+                        className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        <ChevronRight className="h-4 w-4 text-gray-600" />
+                    </button>
+                    <button
+                        onClick={() => setCurrentMonth(new Date())}
+                        className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors"
+                    >
+                        Today
+                    </button>
+                </div>
+
+                {/* Legend */}
+                <div className="hidden sm:flex items-center gap-4 text-xs text-gray-600">
+                    {Object.entries(STATUS_STYLES).map(([s, st]) => (
+                        <div key={s} className="flex items-center gap-1.5">
+                            <span className={`inline-block w-3 h-3 rounded-sm ${st.bar}`} />
+                            <span className="capitalize">{s}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Scrollable timeline */}
+            <div className="overflow-x-auto" ref={scrollRef}>
+                <div style={{ minWidth: SIDEBAR_W + totalDays * CELL_W }}>
+
+                    {/* Header row: sidebar label + day numbers */}
+                    <div className="flex sticky top-0 z-20 bg-white border-b border-gray-200">
+                        {/* Sidebar header */}
                         <div
-                            className="w-3 h-3 rounded"
-                            style={{ backgroundColor: colors.bg, border: `2px solid ${colors.border}` }}
-                        />
-                        <span className="text-xs text-gray-600 capitalize">{status}</span>
+                            className="flex-shrink-0 sticky left-0 z-30 bg-gray-50 border-r border-gray-200 flex items-center px-3"
+                            style={{ width: SIDEBAR_W, height: 40 }}
+                        >
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Property / Unit</span>
+                        </div>
+
+                        {/* Day columns */}
+                        {days.map(day => {
+                            const todayCell = isToday(day);
+                            return (
+                                <div
+                                    key={day.toISOString()}
+                                    className={`flex-shrink-0 flex flex-col items-center justify-center border-r border-gray-100 text-xs font-medium
+                                        ${todayCell ? 'bg-emerald-50 text-emerald-700' : 'text-gray-500'}`}
+                                    style={{ width: CELL_W, height: 40 }}
+                                >
+                                    <span className="leading-none">{format(day, 'EEE').charAt(0)}</span>
+                                    <span className={`leading-none mt-0.5 font-bold ${todayCell ? 'text-emerald-700' : 'text-gray-700'}`}>
+                                        {format(day, 'd')}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
-                ))}
+
+                    {/* Property groups + apartment rows */}
+                    {groups.map(group => (
+                        <div key={group.propertyId ?? '__standalone__'}>
+                            {/* Property header */}
+                            <div className="flex border-b border-gray-200 bg-gray-50">
+                                <div
+                                    className="flex-shrink-0 sticky left-0 z-10 bg-gray-50 border-r border-gray-200 flex items-center px-3 gap-2"
+                                    style={{ width: SIDEBAR_W, height: 32 }}
+                                >
+                                    <span className="text-xs font-bold text-gray-700 truncate">{group.propertyName}</span>
+                                    <span className="text-xs text-gray-400">({group.apts.length})</span>
+                                </div>
+                                <div style={{ width: totalDays * CELL_W, height: 32 }} className="bg-gray-50" />
+                            </div>
+
+                            {/* Apartment rows */}
+                            {group.apts.map((apt, aptIdx) => {
+                                const aptBookings = (bookingsByApt.get(apt.id) ?? []).filter(b =>
+                                    b.status !== 'cancelled'
+                                );
+
+                                return (
+                                    <div
+                                        key={apt.id}
+                                        className={`flex border-b border-gray-100 ${aptIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
+                                        style={{ height: ROW_H }}
+                                    >
+                                        {/* Apartment label - sticky */}
+                                        <div
+                                            className={`flex-shrink-0 sticky left-0 z-10 border-r border-gray-200 flex items-center px-3 gap-2
+                                                ${aptIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
+                                            style={{ width: SIDEBAR_W }}
+                                        >
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                                            <span className="text-xs text-gray-700 truncate">{apt.title}</span>
+                                        </div>
+
+                                        {/* Day cells + booking bars */}
+                                        <div className="relative" style={{ width: totalDays * CELL_W }}>
+                                            {/* Day grid lines */}
+                                            <div className="absolute inset-0 flex pointer-events-none">
+                                                {days.map(day => (
+                                                    <div
+                                                        key={day.toISOString()}
+                                                        className={`flex-shrink-0 h-full border-r ${isToday(day) ? 'bg-emerald-50/60 border-emerald-200' : 'border-gray-100'}`}
+                                                        style={{ width: CELL_W }}
+                                                    />
+                                                ))}
+                                            </div>
+
+                                            {/* Booking bars */}
+                                            {aptBookings.map(booking => {
+                                                const geo = barGeometry(booking);
+                                                if (!geo) return null;
+                                                const style = STATUS_STYLES[booking.status] ?? STATUS_STYLES.pending;
+                                                return (
+                                                    <button
+                                                        key={booking.booking_id}
+                                                        onClick={() => setSelectedBooking(booking)}
+                                                        className={`absolute top-2 rounded cursor-pointer flex items-center px-2 gap-1 hover:brightness-90 transition-all shadow-sm ${style.bar} ${style.text}`}
+                                                        style={{
+                                                            left: geo.left + 1,
+                                                            width: geo.width,
+                                                            height: ROW_H - 16,
+                                                            borderLeft: geo.clippedLeft ? '3px dashed rgba(255,255,255,0.5)' : undefined,
+                                                        }}
+                                                        title={`${booking.name} · ${booking.check_in} → ${booking.check_out}`}
+                                                    >
+                                                        <span className="text-xs font-medium truncate">{booking.name}</span>
+                                                        {geo.width > 80 && (
+                                                            <span className="text-xs opacity-75 truncate ml-auto">
+                                                                {booking.nights}n
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))}
+
+                    {/* Empty state */}
+                    {groups.length === 0 && (
+                        <div className="flex items-center justify-center h-40 text-sm text-gray-400">
+                            No apartments to display
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Calendar */}
-            <div style={{ height: 650 }}>
-                <Calendar
-                    localizer={localizer}
-                    events={events}
-                    startAccessor="start"
-                    endAccessor="end"
-                    view={currentView}
-                    onView={setCurrentView}
-                    date={currentDate}
-                    onNavigate={setCurrentDate}
-                    eventPropGetter={eventStyleGetter}
-                    onSelectEvent={handleSelectEvent}
-                    views={['month', 'week', 'day', 'agenda']}
-                    popup
-                    selectable={false}
-                    style={{ height: '100%' }}
-                />
-            </div>
-
-            {/* Booking Details Modal */}
-            {showModal && selectedEvent && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-                        {/* Modal Header */}
+            {/* Booking detail modal */}
+            {selectedBooking && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedBooking(null)}>
+                    <div
+                        className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+                        onClick={e => e.stopPropagation()}
+                    >
                         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                            <h3 className="text-lg font-bold text-gray-900">Booking Details</h3>
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                            >
+                            <div>
+                                <h3 className="font-bold text-gray-900">{selectedBooking.apartment_details?.title ?? 'Booking'}</h3>
+                                <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold capitalize
+                                    ${selectedBooking.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800' :
+                                      selectedBooking.status === 'pending'   ? 'bg-amber-100 text-amber-800' :
+                                      selectedBooking.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                                                               'bg-blue-100 text-blue-800'}`}>
+                                    {selectedBooking.status}
+                                </span>
+                            </div>
+                            <button onClick={() => setSelectedBooking(null)} className="p-1 hover:bg-gray-100 rounded-full">
                                 <X className="h-5 w-5 text-gray-500" />
                             </button>
                         </div>
 
-                        {/* Modal Body */}
                         <div className="p-4 space-y-4">
-                            {/* Property */}
-                            <div>
-                                <h3 className="font-semibold text-gray-900 mb-1">
-                                    {selectedEvent.resource.apartment_title}
-                                </h3>
-                                <div className="flex items-center text-sm text-gray-600">
-                                    <MapPin className="h-4 w-4 mr-1" />
-                                    {selectedEvent.resource.apartment_location}
-                                </div>
-                            </div>
-
-                            {/* Status & Payment */}
-                            <div className="flex gap-2">
-                                <StatusBadge status={selectedEvent.resource.status} />
-                                <StatusBadge status={selectedEvent.resource.payment_status} />
-                                {selectedEvent.resource.occupancy_status && (
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${selectedEvent.resource.occupancy_status === 'occupied' ? 'bg-purple-100 text-purple-800' :
-                                        selectedEvent.resource.occupancy_status === 'departed' ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'
-                                        }`}>
-                                        {selectedEvent.resource.occupancy_status}
-                                    </span>
-                                )}
-                            </div>
-
-                            {/* Guest Info */}
+                            {/* Guest */}
                             <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                                <div className="flex items-center text-sm">
-                                    <User className="h-4 w-4 text-gray-400 mr-2" />
-                                    <span className="font-medium text-gray-900">{selectedEvent.resource.name}</span>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <User className="h-4 w-4 text-gray-400" />
+                                    <span className="font-medium text-gray-900">{selectedBooking.name}</span>
                                 </div>
-                                <div className="flex items-center text-sm">
-                                    <Mail className="h-4 w-4 text-gray-400 mr-2" />
-                                    <span className="text-gray-600">{selectedEvent.resource.email}</span>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Mail className="h-4 w-4 text-gray-400" />
+                                    <span className="text-gray-600">{selectedBooking.email}</span>
                                 </div>
-                                <div className="flex items-center text-sm">
-                                    <Phone className="h-4 w-4 text-gray-400 mr-2" />
-                                    <span className="text-gray-600">{selectedEvent.resource.phone}</span>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Phone className="h-4 w-4 text-gray-400" />
+                                    <span className="text-gray-600">{selectedBooking.phone}</span>
                                 </div>
                             </div>
+
+                            {/* Property info */}
+                            {selectedBooking.apartment_details?.property_details && (
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <MapPin className="h-4 w-4 text-gray-400" />
+                                    <span>{selectedBooking.apartment_details.property_details.name}</span>
+                                </div>
+                            )}
 
                             {/* Dates */}
                             <div className="grid grid-cols-2 gap-3">
-                                <div>
+                                <div className="bg-emerald-50 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">Check-in</p>
-                                    <div className="flex items-center text-sm font-medium text-gray-900">
-                                        <CalendarIcon className="h-4 w-4 text-gray-400 mr-1" />
-                                        {format(selectedEvent.start, 'MMM d, yyyy')}
+                                    <div className="flex items-center gap-1 text-sm font-semibold text-gray-900">
+                                        <CalendarIcon className="h-3.5 w-3.5 text-emerald-500" />
+                                        {format(parseISO(selectedBooking.check_in), 'MMM d, yyyy')}
                                     </div>
-                                    {selectedEvent.resource.checked_in_at && (
-                                        <p className="text-xs text-green-600 mt-1">
-                                            Arrived: {format(new Date(selectedEvent.resource.checked_in_at), 'h:mm a')}
-                                        </p>
-                                    )}
                                 </div>
-                                <div>
+                                <div className="bg-blue-50 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">Check-out</p>
-                                    <div className="flex items-center text-sm font-medium text-gray-900">
-                                        <CalendarIcon className="h-4 w-4 text-gray-400 mr-1" />
-                                        {format(selectedEvent.end, 'MMM d, yyyy')}
+                                    <div className="flex items-center gap-1 text-sm font-semibold text-gray-900">
+                                        <CalendarIcon className="h-3.5 w-3.5 text-blue-500" />
+                                        {format(parseISO(selectedBooking.check_out), 'MMM d, yyyy')}
                                     </div>
-                                    {selectedEvent.resource.checked_out_at && (
-                                        <p className="text-xs text-blue-600 mt-1">
-                                            Departed: {format(new Date(selectedEvent.resource.checked_out_at), 'h:mm a')}
-                                        </p>
-                                    )}
                                 </div>
                             </div>
 
                             {/* Amount */}
-                            <div className="bg-emerald-50 rounded-lg p-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center text-sm text-gray-600">
-                                        <DollarSign className="h-4 w-4 text-emerald-600 mr-1" />
-                                        Total Amount
-                                    </div>
-                                    <span className="text-xl font-bold text-emerald-600">
-                                        {selectedEvent.resource.currency}
-                                        {parseFloat(selectedEvent.resource.total_amount).toLocaleString()}
-                                    </span>
+                            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <DollarSign className="h-4 w-4 text-emerald-600" />
+                                    <span>{selectedBooking.nights} nights · {selectedBooking.guests} guests</span>
                                 </div>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {selectedEvent.resource.nights} nights • {selectedEvent.resource.guests} guests
-                                </p>
+                                <span className="text-lg font-bold text-emerald-600">
+                                    {selectedBooking.currency}{parseFloat(selectedBooking.total_amount).toLocaleString()}
+                                </span>
                             </div>
 
-                            {/* Special Requests */}
-                            {selectedEvent.resource.special_requests && (
+                            {/* Special requests */}
+                            {selectedBooking.special_requests && (
                                 <div>
                                     <p className="text-xs text-gray-500 mb-1">Special Requests</p>
-                                    <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded">
-                                        {selectedEvent.resource.special_requests}
-                                    </p>
+                                    <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded-lg">{selectedBooking.special_requests}</p>
                                 </div>
                             )}
                         </div>
 
-                        {/* Modal Footer - Actions */}
+                        {/* Status actions */}
                         {onStatusChange && (
-                            <div className="p-4 border-t border-gray-200 space-y-2">
-                                <p className="text-xs text-gray-500 mb-2">Update Status:</p>
+                            <div className="p-4 border-t border-gray-200">
+                                <p className="text-xs text-gray-500 mb-2">Update status:</p>
                                 <div className="flex flex-wrap gap-2">
-                                    <button
-                                        onClick={() => handleStatusChange('confirmed')}
-                                        disabled={selectedEvent.resource.status === 'confirmed'}
-                                        className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Confirm
-                                    </button>
-                                    <button
-                                        onClick={() => handleStatusChange('completed')}
-                                        disabled={selectedEvent.resource.status === 'completed' || selectedEvent.resource.status === 'cancelled'}
-                                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Complete
-                                    </button>
-                                    <button
-                                        onClick={() => handleStatusChange('cancelled')}
-                                        disabled={selectedEvent.resource.status === 'cancelled' || selectedEvent.resource.status === 'completed'}
-                                        className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Cancel
-                                    </button>
+                                    {(['confirmed', 'completed', 'cancelled'] as const).map(s => (
+                                        <button
+                                            key={s}
+                                            disabled={selectedBooking.status === s}
+                                            onClick={() => { onStatusChange(selectedBooking.booking_id, s); setSelectedBooking(null); }}
+                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                                                ${s === 'confirmed' ? 'bg-emerald-600 text-white hover:bg-emerald-700' :
+                                                  s === 'completed' ? 'bg-blue-600 text-white hover:bg-blue-700' :
+                                                                      'bg-red-600 text-white hover:bg-red-700'}`}
+                                        >
+                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         )}
                     </div>
                 </div>
             )}
-
-            {/* Custom styles for react-big-calendar */}
-            <style jsx global>{`
-        .rbc-calendar {
-          font-family: inherit;
-        }
-        .rbc-header {
-          padding: 8px;
-          font-weight: 600;
-          color: #374151;
-          background: #F9FAFB;
-          border-bottom: 1px solid #E5E7EB;
-        }
-        .rbc-today {
-          background-color: #ECFDF5;
-        }
-        .rbc-off-range-bg {
-          background-color: #F9FAFB;
-        }
-        .rbc-event {
-          border: none !important;
-          outline: none !important;
-        }
-        .rbc-event:focus {
-          outline: 2px solid #10B981 !important;
-          outline-offset: 2px;
-        }
-        .rbc-toolbar button {
-          color: #374151;
-          border: 1px solid #E5E7EB;
-          background: white;
-          font-weight: 500;
-          padding: 6px 12px;
-          border-radius: 6px;
-        }
-        .rbc-toolbar button:hover {
-          background: #F3F4F6;
-          border-color: #D1D5DB;
-        }
-        .rbc-toolbar button.rbc-active {
-          background: #10B981;
-          color: white;
-          border-color: #10B981;
-        }
-        .rbc-btn-group button + button {
-          margin-left: -1px;
-        }
-        .rbc-btn-group button:first-child {
-          border-top-right-radius: 0;
-          border-bottom-right-radius: 0;
-        }
-        .rbc-btn-group button:last-child {
-          border-top-left-radius: 0;
-          border-bottom-left-radius: 0;
-        }
-        .rbc-btn-group button:not(:first-child):not(:last-child) {
-          border-radius: 0;
-        }
-        .rbc-toolbar-label {
-          font-weight: 600;
-          font-size: 1.1rem;
-          color: #1F2937;
-        }
-        .rbc-month-view, .rbc-time-view {
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-        .rbc-agenda-view table.rbc-agenda-table {
-          border: 1px solid #E5E7EB;
-          border-radius: 8px;
-        }
-        .rbc-agenda-view table.rbc-agenda-table thead > tr > th {
-          background: #F9FAFB;
-          color: #374151;
-          font-weight: 600;
-        }
-      `}</style>
         </div>
     );
 }
