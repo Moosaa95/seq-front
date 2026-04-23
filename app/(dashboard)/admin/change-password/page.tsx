@@ -6,6 +6,7 @@ import { Lock, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
+import { getPublicApiBaseUrl } from '@/lib/store/api/apiSlice';
 
 export default function ChangePasswordPage() {
     const router = useRouter();
@@ -35,7 +36,7 @@ export default function ChangePasswordPage() {
 
         try {
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/account/users/change_password/`,
+                `${getPublicApiBaseUrl()}/account/users/change_password/`,
                 {
                     method: 'POST',
                     headers: {

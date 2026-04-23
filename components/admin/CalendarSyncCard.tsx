@@ -13,6 +13,7 @@ import {
     Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getPublicApiBaseUrl } from '@/lib/store/api/apiSlice';
 import { useGetExternalCalendarsQuery, useCreateExternalCalendarMutation, useDeleteExternalCalendarMutation, useSyncExternalCalendarMutation, ExternalCalendar, CalendarSource } from '@/lib/store/api/calendarApi';
 
 interface CalendarSyncCardProps {
@@ -47,7 +48,7 @@ export default function CalendarSyncCard({ propertyId, propertyTitle }: Calendar
     const [copied, setCopied] = useState(false);
 
     // Export URL for this property
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+    const API_BASE_URL = getPublicApiBaseUrl();
     const exportUrl = `${API_BASE_URL}/apartments/${propertyId}/ical/`;
 
     const handleCopyExportUrl = async () => {

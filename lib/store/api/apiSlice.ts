@@ -14,6 +14,12 @@ import type {
 import { Mutex } from "async-mutex";
 import { setAuth, logout } from "../slices/authSlice";
 
+/** Must match Django `config.urls` — API lives under `path("api/", ...)`. If the env is only the host, append `/api`. */
+export function getPublicApiBaseUrl(): string {
+    const raw = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api").trim().replace(/\/+$/, "");
+    return raw.endsWith("/api") ? raw : `${raw}/api`;
+}
+
 // Get CSRF token from cookie
 function getCookie(name: string): string | null {
     if (typeof document === 'undefined') return null;
@@ -35,7 +41,7 @@ function getCookie(name: string): string | null {
 const mutex = new Mutex();
 
 const baseQuery = fetchBaseQuery({
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
+    baseUrl: getPublicApiBaseUrl(),
     credentials: 'include', // Include cookies in requests
     prepareHeaders: (headers) => {
         // Add CSRF token for non-GET requests
