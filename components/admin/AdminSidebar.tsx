@@ -22,6 +22,8 @@ import {
   Activity,
   UserCog,
 } from 'lucide-react';
+import { useAuth } from '@/lib/hooks/useAuth';
+import { hasPermission } from '@/lib/store/slices/authSlice';
 
 interface NavItem {
   name: string;
@@ -29,33 +31,45 @@ interface NavItem {
   icon: any;
   badge?: string;
   divider?: boolean;
+  permission?: string | null;
 }
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { name: 'Properties', href: '/admin/properties', icon: Building2 },
-  { name: 'Bookings', href: '/admin/bookings', icon: Calendar, badge: '12' },
-  { name: 'Transactions', href: '/admin/transactions', icon: CreditCard },
-  { name: 'Inquiries', href: '/admin/inquiries', icon: MessageSquare },
-  { name: 'Customers', href: '/admin/customers', icon: Users },
-  { name: 'Inventory', href: '/admin/inventory', icon: Box },
-  { name: 'Disputes', href: '/admin/disputes', icon: AlertCircle },
-  // User Management Section
-  { name: 'User Management', href: '/admin/users', icon: UserCog, divider: true },
-  { name: 'Roles', href: '/admin/roles', icon: Shield },
-  { name: 'Activity Logs', href: '/admin/activity-logs', icon: Activity },
-  { name: 'Settings', href: '/admin/settings', icon: Settings, divider: true },
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, permission: null },
+  { name: 'Properties', href: '/admin/properties', icon: Building2, permission: 'property:read' },
+  { name: 'Bookings', href: '/admin/bookings', icon: Calendar, permission: 'booking:read' },
+  { name: 'Transactions', href: '/admin/transactions', icon: CreditCard, permission: 'payment:read' },
+  { name: 'Inquiries', href: '/admin/inquiries', icon: MessageSquare, permission: 'inquiry:read' },
+  { name: 'Customers', href: '/admin/customers', icon: Users, permission: 'user:read' },
+  { name: 'Inventory', href: '/admin/inventory', icon: Box, permission: 'inventory:read' },
+  { name: 'Disputes', href: '/admin/disputes', icon: AlertCircle, permission: 'booking:read' },
+  // Admin section
+  { name: 'User Management', href: '/admin/users', icon: UserCog, permission: 'user:read', divider: true },
+  { name: 'Roles', href: '/admin/roles', icon: Shield, permission: 'role:read' },
+  { name: 'Activity Logs', href: '/admin/activity-logs', icon: Activity, permission: 'logs:read' },
+  { name: 'Settings', href: '/admin/settings', icon: Settings, permission: null, divider: true },
 ];
 
 export default function AdminSidebar() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   const isActive = (href: string) => {
     if (href === '/admin') {
       return pathname === href;
     }
     return pathname.startsWith(href);
+  };
+
+  const canSeeItem = (item: NavItem) => {
+    if (!item.permission) return true;
+    return hasPermission(user, item.permission);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = '/admin/login';
   };
 
   return (
@@ -98,9 +112,19 @@ export default function AdminSidebar() {
             </div>
           </div>
 
+          {/* User info strip */}
+          {user && (
+            <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100">
+              <p className="text-xs font-semibold text-emerald-800 truncate">
+                {user.first_name} {user.last_name}
+              </p>
+              <p className="text-xs text-emerald-600 truncate">{user.role?.name || (user.is_superuser ? 'Super Admin' : 'Staff')}</p>
+            </div>
+          )}
+
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-            {navigation.map((item) => {
+            {navigation.filter(canSeeItem).map((item) => {
               const active = isActive(item.href);
               return (
                 <div key={item.name}>
@@ -150,10 +174,7 @@ export default function AdminSidebar() {
               <span className="font-medium">Back to Site</span>
             </Link>
             <button
-              onClick={() => {
-                // TODO: Implement logout
-                alert('Logout functionality coming soon!');
-              }}
+              onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-3 text-red-700 hover:bg-red-50 rounded-lg transition-colors"
             >
               <LogOut className="h-5 w-5" />

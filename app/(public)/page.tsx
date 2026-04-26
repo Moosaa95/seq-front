@@ -283,11 +283,11 @@ export default function HomePage() {
                                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-300" /> No Hidden Fees</div>
                                 </div>
                                 <Link
-                                    href="/booking"
+                                    href="/properties"
                                     className="group relative inline-flex items-center justify-center gap-3 bg-white text-emerald-700 hover:bg-emerald-50 px-10 py-5 rounded-2xl font-black text-lg shadow-2xl shadow-black/25 hover:shadow-black/35 transition-all duration-300 hover:-translate-y-0.5"
                                 >
                                     <Calendar className="w-5 h-5" />
-                                    Book Your Stay
+                                    Browse Properties
                                     <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
                                 </Link>
                                 <p className="text-white/55 text-xs">1-bedroom units from ₦75,000/night</p>

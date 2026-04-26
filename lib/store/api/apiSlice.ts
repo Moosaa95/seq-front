@@ -53,6 +53,19 @@ const baseQuery = fetchBaseQuery({
     },
 });
 
+// Auth endpoints that must never trigger the refresh-and-retry flow
+const AUTH_ENDPOINTS = [
+    '/account/jwt/create/',
+    '/account/jwt/signup/',
+    '/account/jwt/refresh/',
+    '/account/logout/',
+];
+
+function isAuthEndpoint(args: string | FetchArgs): boolean {
+    const url = typeof args === 'string' ? args : args.url ?? '';
+    return AUTH_ENDPOINTS.some((ep) => url.includes(ep));
+}
+
 const baseQueryWithReauth: BaseQueryFn<
     string | FetchArgs,
     unknown,
@@ -63,7 +76,13 @@ const baseQueryWithReauth: BaseQueryFn<
 
     let result = await baseQuery(args, api, extraOptions);
 
-    // If we get a 401, try to refresh the token
+    // Never attempt token refresh for auth endpoints — wrong password should
+    // just surface the 401 directly to the caller.
+    if (isAuthEndpoint(args)) {
+        return result;
+    }
+
+    // If we get a 401 on a regular API call, try to refresh the token
     if (result.error && result.error.status === 401) {
         if (!mutex.isLocked()) {
             const release = await mutex.acquire();

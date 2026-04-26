@@ -178,7 +178,7 @@ export default function RecordMovementModal({ isOpen, onClose }: RecordMovementM
                                 >
                                     <option value="">Select Property...</option>
                                     {propertiesData?.results?.map((prop: any) => (
-                                        <option key={prop.id} value={prop.id}>{prop.title}</option>
+                                        <option key={prop.id} value={prop.id}>{prop.name}</option>
                                     ))}
                                 </select>
                             </div>

@@ -13,14 +13,20 @@ import { useGetPropertyQuery, useGetApartmentsQuery, ApiApartment } from '@/lib/
 
 // ─── Map ──────────────────────────────────────────────────────────────────────
 function PropertyMap({ latitude, longitude, address, name }: {
-  latitude: string; longitude: string; address?: string; name: string;
+  latitude?: string | null; longitude?: string | null; address?: string; name: string;
 }) {
-  const lat = parseFloat(latitude);
-  const lng = parseFloat(longitude);
-  const delta = 0.008;
-  const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  const lat = latitude ? parseFloat(latitude) : NaN;
+  const lng = longitude ? parseFloat(longitude) : NaN;
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const destination = hasCoords ? `${lat},${lng}` : encodeURIComponent(address || name);
+  const src = hasCoords
+    ? (() => {
+      const delta = 0.008;
+      const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+    })()
+    : `https://www.openstreetmap.org/export/embed.html?bbox=7.2,8.8,7.7,9.2&layer=mapnik&marker=9.0765,7.3986`;
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
 
   return (
     <motion.div
@@ -176,8 +182,7 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
 
   const amenitiesList = Array.isArray(property.amenities) ? property.amenities : [];
   const displayImages = (property.images || []).map((img) => img.image_url || img.image);
-  const hasMap = property.latitude && property.longitude;
-  const mapAddress = property.address || property.location_details?.name;
+  const mapAddress = property.address || property.location_details?.name || property.name;
 
   return (
     <div className="pt-20 min-h-screen bg-gray-50">
@@ -275,14 +280,12 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
         )}
 
         {/* ── Map ── */}
-        {hasMap && (
-          <PropertyMap
-            latitude={property.latitude!}
-            longitude={property.longitude!}
-            address={mapAddress}
-            name={property.name}
-          />
-        )}
+        <PropertyMap
+          latitude={property.latitude}
+          longitude={property.longitude}
+          address={mapAddress}
+          name={property.name}
+        />
 
         {/* ── Units / Apartments ── */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>

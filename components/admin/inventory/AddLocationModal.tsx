@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { useCreateLocationMutation } from '@/lib/store/api/inventoryApi';
 import { toast } from 'sonner';
+import { NIGERIA_STATES, getLGAsForState } from '@/lib/data/nigeria-states-lgas';
 
 interface AddLocationModalProps {
     isOpen: boolean;
@@ -13,15 +14,27 @@ interface AddLocationModalProps {
 const INITIAL_FORM = {
     name: '',
     address: '',
-    state: 'Foreign',
+    state: '',
     lga: '',
-    country: '',
+    country: 'Nigeria',
     is_active: true,
 };
 
 export default function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
     const [createLocation, { isLoading }] = useCreateLocationMutation();
     const [formData, setFormData] = useState(INITIAL_FORM);
+    const [availableLGAs, setAvailableLGAs] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (formData.state) {
+            const lgas = getLGAsForState(formData.state);
+            setAvailableLGAs(lgas);
+            // Reset LGA when state changes
+            setFormData(prev => ({ ...prev, lga: '' }));
+        } else {
+            setAvailableLGAs([]);
+        }
+    }, [formData.state]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,7 +45,7 @@ export default function AddLocationModal({ isOpen, onClose }: AddLocationModalPr
             onClose();
         } catch (error: any) {
             console.error('Failed to create location', error);
-            toast.error('Failed to create location');
+            toast.error(error?.data?.detail || 'Failed to create location');
         }
     };
 
@@ -61,29 +74,6 @@ export default function AddLocationModal({ isOpen, onClose }: AddLocationModalPr
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                            <input
-                                type="text"
-                                value={formData.state}
-                                onChange={e => setFormData({ ...formData, state: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-                                placeholder="e.g. Foreign"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">LGA</label>
-                            <input
-                                type="text"
-                                value={formData.lga}
-                                onChange={e => setFormData({ ...formData, lga: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-                                placeholder="Local Government Area"
-                            />
-                        </div>
-                    </div>
-
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
                         <input
@@ -93,6 +83,38 @@ export default function AddLocationModal({ isOpen, onClose }: AddLocationModalPr
                             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
                             placeholder="e.g. Nigeria"
                         />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                            <select
+                                value={formData.state}
+                                onChange={e => setFormData({ ...formData, state: e.target.value })}
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white"
+                            >
+                                <option value="">Select State</option>
+                                {NIGERIA_STATES.map(s => (
+                                    <option key={s.name} value={s.name}>{s.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">LGA</label>
+                            <select
+                                value={formData.lga}
+                                onChange={e => setFormData({ ...formData, lga: e.target.value })}
+                                disabled={!formData.state || availableLGAs.length === 0}
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                            >
+                                <option value="">
+                                    {formData.state ? 'Select LGA' : 'Pick a state first'}
+                                </option>
+                                {availableLGAs.map(lga => (
+                                    <option key={lga} value={lga}>{lga}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     <div>

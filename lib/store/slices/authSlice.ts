@@ -14,6 +14,15 @@ export interface User {
     is_staff: boolean;
     is_superuser: boolean;
     must_change_password?: boolean;
+    permissions?: string[];
+    role?: { id: string; name: string; is_superuser_role?: boolean } | null;
+}
+
+export function hasPermission(user: User | null, permission: string): boolean {
+    if (!user) return false;
+    if (user.is_superuser) return true;
+    if (user.role?.is_superuser_role) return true;
+    return user.permissions?.includes(permission) ?? false;
 }
 
 interface AuthState {
