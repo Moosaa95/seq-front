@@ -31,15 +31,21 @@ export default function AdminLogin() {
       const response = await login(formData).unwrap();
 
       if (response.success) {
-        // Check if user must change password
+        // Set an indicator cookie on the frontend domain so that the
+        // Next.js middleware can see the session even when the JWT cookie
+        // is scoped to the API domain (cross-origin production setup).
+        document.cookie = 'admin_session=1; path=/; SameSite=Lax; max-age=86400';
+
         if (response.user?.must_change_password) {
           toast.info('Please change your password to continue.');
-          router.push('/admin/change-password');
+          window.location.href = '/admin/change-password';
           return;
         }
 
         toast.success('Login successful! Redirecting...');
-        router.push('/admin');
+        const params = new URLSearchParams(window.location.search);
+        const next = params.get('next') || '/admin';
+        window.location.href = next;
       }
     } catch (error: any) {
       console.error('Login error:', error?.status, error?.data);

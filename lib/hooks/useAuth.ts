@@ -8,12 +8,13 @@ export function useAuth() {
     const [logoutApi] = useLogoutMutation();
 
     const logout = async () => {
+        // Clear the frontend indicator cookie immediately
+        document.cookie = 'admin_session=; path=/; max-age=0; SameSite=Lax';
         try {
             await logoutApi().unwrap();
         } catch (error) {
             console.error('Logout failed:', error);
         } finally {
-            // Ensure local state is cleared even if API call fails
             dispatch(logoutAction());
         }
     };

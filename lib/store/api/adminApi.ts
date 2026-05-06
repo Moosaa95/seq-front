@@ -101,6 +101,8 @@ export interface ApiUser {
     role_name?: string;
     role_details?: ApiUserRole;
     permissions?: string[];
+    profile_image?: string | null;
+    profile_image_url?: string | null;
 }
 
 export interface ApiActivityLog {
@@ -383,20 +385,23 @@ export const adminApi = apiSlice.injectEndpoints({
             providesTags: (result, error, id) => [{ type: 'User', id }],
         }),
 
-        createUser: builder.mutation<ApiUser, Partial<ApiUser> & { password?: string }>({
+        createUser: builder.mutation<ApiUser, FormData | (Partial<ApiUser> & { password?: string })>({
             query: (data) => ({
                 url: '/account/users/',
                 method: 'POST',
                 body: data,
+                // Don't set Content-Type — let the browser set it with boundary for FormData
+                formData: data instanceof FormData,
             }),
             invalidatesTags: [{ type: 'User', id: 'LIST' }],
         }),
 
-        updateUser: builder.mutation<ApiUser, { id: string; data: Partial<ApiUser> & { password?: string } }>({
+        updateUser: builder.mutation<ApiUser, { id: string; data: FormData | (Partial<ApiUser> & { password?: string }) }>({
             query: ({ id, data }) => ({
                 url: `/account/users/${id}/`,
                 method: 'PATCH',
                 body: data,
+                formData: data instanceof FormData,
             }),
             invalidatesTags: (result, error, { id }) => [
                 { type: 'User', id },

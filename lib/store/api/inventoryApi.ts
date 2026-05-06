@@ -22,6 +22,8 @@ export interface InventoryItem {
     category: string;
     unit: string;
     is_active: boolean;
+    image?: string | null;
+    image_url?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -187,19 +189,21 @@ export const inventoryApi = apiSlice.injectEndpoints({
             query: (id) => `/inventory-items/${id}/`,
             providesTags: ['InventoryItem'],
         }),
-        createInventoryItem: builder.mutation<InventoryItem, CreateInventoryItemInput>({
+        createInventoryItem: builder.mutation<InventoryItem, CreateInventoryItemInput | FormData>({
             query: (body) => ({
                 url: '/inventory-items/',
                 method: 'POST',
                 body,
+                formData: body instanceof FormData,
             }),
             invalidatesTags: ['InventoryItem'],
         }),
-        updateInventoryItem: builder.mutation<InventoryItem, { id: number; data: Partial<CreateInventoryItemInput> }>({
+        updateInventoryItem: builder.mutation<InventoryItem, { id: number; data: Partial<CreateInventoryItemInput> | FormData }>({
             query: ({ id, data }) => ({
                 url: `/inventory-items/${id}/`,
                 method: 'PATCH',
                 body: data,
+                formData: data instanceof FormData,
             }),
             invalidatesTags: ['InventoryItem'],
         }),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Camera } from 'lucide-react';
 import { useCreateInventoryItemMutation } from '@/lib/store/api/inventoryApi';
 import { toast } from 'sonner';
 
@@ -10,29 +10,53 @@ interface AddItemModalProps {
     onClose: () => void;
 }
 
+const CATEGORIES = ['Linens', 'Kitchenware', 'Toiletries', 'Electronics', 'Furniture', 'Cleaning', 'Safety', 'Other'];
+const UNITS = ['piece', 'set', 'box', 'kg', 'liter', 'pair', 'roll'];
+
 export default function AddItemModal({ isOpen, onClose }: AddItemModalProps) {
     const [createItem, { isLoading }] = useCreateInventoryItemMutation();
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         name: '',
         category: '',
         description: '',
         unit: 'piece',
-        is_active: true
+        is_active: true,
     });
 
-    const categories = ['Linens', 'Kitchenware', 'Toiletries', 'Electronic', 'Furniture', 'Other'];
-    const units = ['piece', 'set', 'box', 'kg', 'liter'];
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
+    };
+
+    const reset = () => {
+        setFormData({ name: '', category: '', description: '', unit: 'piece', is_active: true });
+        setImageFile(null);
+        setImagePreview(null);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createItem(formData).unwrap();
+            let payload: any = formData;
+            if (imageFile) {
+                const fd = new FormData();
+                for (const [k, v] of Object.entries(formData)) {
+                    fd.append(k, String(v));
+                }
+                fd.append('image', imageFile);
+                payload = fd;
+            }
+            await createItem(payload).unwrap();
             toast.success('Inventory item created successfully');
-            setFormData({ name: '', category: '', description: '', unit: 'piece', is_active: true });
+            reset();
             onClose();
         } catch (error: any) {
-            console.error("Failed to create item", error);
-            toast.error('Failed to create item');
+            console.error('Failed to create item', error);
+            toast.error(error?.data?.detail || 'Failed to create item');
         }
     };
 
@@ -49,6 +73,24 @@ export default function AddItemModal({ isOpen, onClose }: AddItemModalProps) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-4 space-y-4">
+                    {/* Item image */}
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="relative">
+                            {imagePreview ? (
+                                <img src={imagePreview} alt="Preview" className="h-20 w-20 rounded-lg object-cover border-2 border-emerald-300" />
+                            ) : (
+                                <div className="h-20 w-20 rounded-lg bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
+                                    <Camera className="h-7 w-7 text-gray-400" />
+                                </div>
+                            )}
+                            <label htmlFor="item_photo" className="absolute -bottom-1 -right-1 bg-white border border-gray-300 rounded-full p-1.5 cursor-pointer hover:bg-gray-50 shadow-sm">
+                                <Camera className="h-3 w-3 text-gray-600" />
+                            </label>
+                        </div>
+                        <input id="item_photo" type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                        <p className="text-xs text-gray-500">Click to add item photo (optional)</p>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
                         <input
@@ -68,21 +110,20 @@ export default function AddItemModal({ isOpen, onClose }: AddItemModalProps) {
                                 required
                                 value={formData.category}
                                 onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white"
                             >
                                 <option value="">Select...</option>
-                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
                             <select
-                                required
                                 value={formData.unit}
                                 onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white"
                             >
-                                {units.map(u => <option key={u} value={u}>{u}</option>)}
+                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                             </select>
                         </div>
                     </div>
@@ -94,7 +135,7 @@ export default function AddItemModal({ isOpen, onClose }: AddItemModalProps) {
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
                             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
                             placeholder="Item details..."
-                            rows={3}
+                            rows={2}
                         />
                     </div>
 
@@ -110,11 +151,7 @@ export default function AddItemModal({ isOpen, onClose }: AddItemModalProps) {
                     </div>
 
                     <div className="pt-2 flex justify-end gap-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                        >
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
                             Cancel
                         </button>
                         <button

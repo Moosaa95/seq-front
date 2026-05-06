@@ -33,6 +33,9 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
     useEffect(() => {
         if (!loading && !isAuthenticated) {
+            // Clear the indicator cookie so the middleware doesn't bounce us
+            // back to /admin and create a redirect loop.
+            document.cookie = 'admin_session=; path=/; max-age=0; SameSite=Lax';
             router.push('/admin/login');
         }
     }, [loading, isAuthenticated, router]);

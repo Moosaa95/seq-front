@@ -15,8 +15,8 @@ import {
     Check,
     AlertCircle,
     Mail,
-
     Calendar,
+    Camera,
 } from 'lucide-react';
 import {
     useGetUsersQuery,
@@ -40,12 +40,26 @@ interface UserFormData {
     is_superuser: boolean;
 }
 
+// Helper: build FormData, skipping null/undefined and empty strings
+function toFormData(data: Record<string, any>, imageFile?: File | null): FormData {
+    const fd = new FormData();
+    for (const [key, val] of Object.entries(data)) {
+        if (val !== null && val !== undefined && val !== '') {
+            fd.append(key, String(val));
+        }
+    }
+    if (imageFile) fd.append('profile_image', imageFile);
+    return fd;
+}
+
 export default function UsersPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState<string>('');
     const [filterActive, setFilterActive] = useState<string>('');
     const [showModal, setShowModal] = useState(false);
     const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [formData, setFormData] = useState<UserFormData>({
         email: '',
         first_name: '',
@@ -72,8 +86,10 @@ export default function UsersPage() {
     const roles = rolesData?.results || [];
 
     const handleOpenModal = (user?: ApiUser) => {
+        setImageFile(null);
         if (user) {
             setEditingUser(user);
+            setImagePreview(user.profile_image_url || null);
             setFormData({
                 email: user.email,
                 first_name: user.first_name,
@@ -86,6 +102,7 @@ export default function UsersPage() {
             });
         } else {
             setEditingUser(null);
+            setImagePreview(null);
             setFormData({
                 email: '',
                 first_name: '',
@@ -100,18 +117,26 @@ export default function UsersPage() {
         setShowModal(true);
     };
 
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             if (editingUser) {
                 const data: any = { ...formData };
                 if (!data.password) delete data.password;
-                await updateUser({ id: editingUser.id, data }).unwrap();
+                const payload = imageFile ? toFormData(data, imageFile) : data;
+                await updateUser({ id: editingUser.id, data: payload }).unwrap();
                 toast.success('User updated successfully!');
             } else {
-                // Don't send password for new users - backend auto-generates it
                 const { password, ...createData } = formData;
-                const result = await createUser(createData).unwrap() as any;
+                const payload = imageFile ? toFormData(createData as any, imageFile) : createData;
+                const result = await createUser(payload).unwrap() as any;
                 toast.success(result.message || 'User created successfully! Password sent to email.');
             }
             setShowModal(false);
@@ -275,9 +300,17 @@ export default function UsersPage() {
                                     >
                                         <td className="py-4 px-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-semibold">
-                                                    {user.first_name[0]}{user.last_name[0]}
-                                                </div>
+                                                {user.profile_image_url ? (
+                                                    <img
+                                                        src={user.profile_image_url}
+                                                        alt={user.first_name}
+                                                        className="h-10 w-10 rounded-full object-cover border border-gray-200"
+                                                    />
+                                                ) : (
+                                                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-semibold">
+                                                        {user.first_name[0]}{user.last_name[0]}
+                                                    </div>
+                                                )}
                                                 <div>
                                                     <p className="font-medium text-gray-900">{user.first_name} {user.last_name}</p>
                                                     <p className="text-sm text-gray-500 flex items-center gap-1">
@@ -370,6 +403,24 @@ export default function UsersPage() {
                             </div>
 
                             <form onSubmit={handleSubmit} className="p-4 space-y-4">
+                                {/* Profile Photo */}
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="relative">
+                                        {imagePreview ? (
+                                            <img src={imagePreview} alt="Preview" className="h-20 w-20 rounded-full object-cover border-2 border-emerald-300" />
+                                        ) : (
+                                            <div className="h-20 w-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-2xl font-semibold">
+                                                {formData.first_name?.[0] || '?'}{formData.last_name?.[0] || ''}
+                                            </div>
+                                        )}
+                                        <label htmlFor="profile_photo" className="absolute bottom-0 right-0 bg-white border border-gray-300 rounded-full p-1.5 cursor-pointer hover:bg-gray-50 shadow-sm">
+                                            <Camera className="h-3.5 w-3.5 text-gray-600" />
+                                        </label>
+                                    </div>
+                                    <input id="profile_photo" type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                                    <p className="text-xs text-gray-500">Click the camera icon to upload a photo</p>
+                                </div>
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                                     <input

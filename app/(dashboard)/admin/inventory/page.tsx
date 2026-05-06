@@ -427,9 +427,20 @@ function ItemsTab() {
 
     const columns = [
         {
-            header: 'Name',
+            header: 'Item',
             accessorKey: 'name',
-            cell: ({ getValue }: any) => <span className="font-medium text-gray-900">{getValue()}</span>,
+            cell: ({ getValue, row }: any) => (
+                <div className="flex items-center gap-3">
+                    {row.original.image_url ? (
+                        <img src={row.original.image_url} alt={getValue()} className="h-10 w-10 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
+                    ) : (
+                        <div className="h-10 w-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center flex-shrink-0">
+                            <Box className="h-5 w-5 text-gray-400" />
+                        </div>
+                    )}
+                    <span className="font-medium text-gray-900">{getValue()}</span>
+                </div>
+            ),
         },
         {
             header: 'Category',
@@ -560,27 +571,42 @@ function PropertyInventoryTab() {
             accessorKey: 'item_details',
             cell: ({ getValue }: any) => {
                 const item = getValue();
-                return <span>{item?.name || '-'}</span>;
+                return (
+                    <div className="flex items-center gap-2">
+                        {item?.image_url && <img src={item.image_url} alt={item.name} className="h-6 w-6 rounded object-cover" />}
+                        <span>{item?.name || '-'}</span>
+                        {item?.category && <span className="text-xs text-gray-400">({item.category})</span>}
+                    </div>
+                );
             },
         },
-        { header: 'Quantity', accessorKey: 'quantity' },
+        {
+            header: 'Qty',
+            accessorKey: 'quantity',
+            cell: ({ getValue }: any) => <span className="font-mono font-medium">{getValue()}</span>,
+        },
     ];
 
     if (isLoading) return <div className="text-center py-10">Loading building inventory...</div>;
 
     return (
-        <DataTable
-            data={propInv || []}
-            columns={columns}
-            searchPlaceholder="Search building inventory..."
-            actions={(row: PropertyInventory) => (
-                <div className="flex gap-2">
-                    <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
-                        <Edit className="w-4 h-4" />
-                    </button>
-                </div>
-            )}
-        />
+        <div>
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+                <strong>Building Inventory</strong> tracks items permanently assigned to a property/building — e.g. fire extinguishers, furniture, CCTV equipment. Use <em>Record Movement</em> (type: Assign to Property) to add items here.
+            </div>
+            <DataTable
+                data={propInv || []}
+                columns={columns}
+                searchPlaceholder="Search building inventory..."
+                actions={(row: PropertyInventory) => (
+                    <div className="flex gap-2">
+                        <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
+                            <Edit className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+            />
+        </div>
     );
 }
 
@@ -601,27 +627,42 @@ function ApartmentInventoryTab() {
             accessorKey: 'item_details',
             cell: ({ getValue }: any) => {
                 const item = getValue();
-                return <span>{item?.name || '-'}</span>;
+                return (
+                    <div className="flex items-center gap-2">
+                        {item?.image_url && <img src={item.image_url} alt={item.name} className="h-6 w-6 rounded object-cover" />}
+                        <span>{item?.name || '-'}</span>
+                        {item?.unit && <span className="text-xs text-gray-400">/ {item.unit}</span>}
+                    </div>
+                );
             },
         },
-        { header: 'Quantity', accessorKey: 'quantity' },
+        {
+            header: 'Qty',
+            accessorKey: 'quantity',
+            cell: ({ getValue }: any) => <span className="font-mono font-medium">{getValue()}</span>,
+        },
     ];
 
     if (isLoading) return <div className="text-center py-10">Loading apartment inventory...</div>;
 
     return (
-        <DataTable
-            data={aptInv || []}
-            columns={columns}
-            searchPlaceholder="Search apartment inventory..."
-            actions={(row: ApartmentInventory) => (
-                <div className="flex gap-2">
-                    <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
-                        <Edit className="w-4 h-4" />
-                    </button>
-                </div>
-            )}
-        />
+        <div>
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-800">
+                <strong>Apartment Inventory</strong> tracks consumable items stocked inside each unit — e.g. bath towels, bedsheets, toiletries. When a guest checks in, items are assigned to the apartment. Use <em>Record Movement</em> (type: Client Request) to track guest usage or restocking.
+            </div>
+            <DataTable
+                data={aptInv || []}
+                columns={columns}
+                searchPlaceholder="Search apartment inventory..."
+                actions={(row: ApartmentInventory) => (
+                    <div className="flex gap-2">
+                        <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
+                            <Edit className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+            />
+        </div>
     );
 }
 
