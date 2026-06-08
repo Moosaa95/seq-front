@@ -4,11 +4,12 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Search, BedDouble, Bath, Users, MapPin, Calendar,
-    SlidersHorizontal, X, ArrowRight, Home, Sparkles,
+    SlidersHorizontal, X, ArrowRight, Home, Sparkles, ExternalLink,
 } from 'lucide-react';
 import ImageWithLoader from '@/components/ImageWithLoader';
-import BookingModal from '@/components/BookingModal';
 import { useGetApartmentsQuery, ApiApartment } from '@/lib/store/api/propertyApi';
+
+const SHORTLET_URL = process.env.NEXT_PUBLIC_SHORTLET_URL || 'http://localhost:3001';
 
 const ease = [0.22, 1, 0.36, 1] as [number, number, number, number];
 const fadeUp = {
@@ -27,10 +28,9 @@ function formatPrice(price: string | number, currency: string) {
 interface ApartmentCardProps {
     apartment: ApiApartment;
     index: number;
-    onBook: (apt: ApiApartment) => void;
 }
 
-function ApartmentCard({ apartment, index, onBook }: ApartmentCardProps) {
+function ApartmentCard({ apartment, index }: ApartmentCardProps) {
     const images = apartment.images || [];
     const firstImage = images.length > 0
         ? (typeof images[0] === 'string' ? images[0] : images[0].image)
@@ -100,14 +100,20 @@ function ApartmentCard({ apartment, index, onBook }: ApartmentCardProps) {
                     {apartment.description}
                 </p>
 
-                <button
-                    onClick={() => onBook(apartment)}
-                    disabled={apartment.is_available === false}
-                    className="w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white shadow-md hover:shadow-emerald-500/30 hover:shadow-lg"
+                <a
+                    href={apartment.is_available === false ? undefined : SHORTLET_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-disabled={apartment.is_available === false}
+                    className={`w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 ${
+                        apartment.is_available === false
+                            ? 'opacity-50 cursor-not-allowed pointer-events-none bg-emerald-600 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md hover:shadow-emerald-500/30 hover:shadow-lg'
+                    }`}
                 >
-                    <Calendar className="w-4 h-4" />
-                    Book Now
-                </button>
+                    <ExternalLink className="w-4 h-4" />
+                    Book on Sequoia Stays
+                </a>
             </div>
         </motion.div>
     );
@@ -120,7 +126,6 @@ export default function BookingPage() {
     const [selectedType, setSelectedType] = useState('All');
     const [maxPrice, setMaxPrice] = useState<number | ''>('');
     const [showFilters, setShowFilters] = useState(false);
-    const [selectedApartment, setSelectedApartment] = useState<ApiApartment | null>(null);
 
     const { data, isLoading } = useGetApartmentsQuery({ page_size: 50, ordering: '-created_at' });
     const apartments = data?.results || [];
@@ -161,7 +166,7 @@ export default function BookingPage() {
                             </span>
                         </h1>
                         <p className="text-gray-400 text-lg max-w-xl mx-auto">
-                            Fully furnished, serviced apartments in {"Abuja's"} finest locations. Book instantly, stay comfortably.
+                            Browse our fully furnished apartments in {"Abuja's"} finest locations. Click any unit to book on Sequoia Stays.
                         </p>
                     </motion.div>
 
@@ -279,7 +284,6 @@ export default function BookingPage() {
                                 key={apt.id}
                                 apartment={apt}
                                 index={i}
-                                onBook={setSelectedApartment}
                             />
                         ))}
                     </div>
@@ -298,13 +302,6 @@ export default function BookingPage() {
                 )}
             </div>
 
-            {/* Booking Modal */}
-            <BookingModal
-                isOpen={!!selectedApartment}
-                onClose={() => setSelectedApartment(null)}
-                propertyTitle={selectedApartment?.title || ''}
-                propertyId={selectedApartment?.id || ''}
-            />
         </div>
     );
 }

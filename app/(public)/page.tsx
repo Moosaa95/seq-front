@@ -67,7 +67,8 @@ function SectionLabel({ children, dark = false }: { children: React.ReactNode; d
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 export default function HomePage() {
-    const { data: propertiesData, isLoading: propertiesLoading } = useGetPropertiesQuery({ page_size: 6, ordering: '-created_at' });
+    const SHORTLET_URL = process.env.NEXT_PUBLIC_SHORTLET_URL || 'http://localhost:3001';
+    const { data: propertiesData, isLoading: propertiesLoading } = useGetPropertiesQuery({ page_size: 3, ordering: '-created_at' });
     const properties = propertiesData?.results || [];
     const totalCount = propertiesData?.count || 0;
 
@@ -184,17 +185,18 @@ export default function HomePage() {
                             transition={{ duration: 0.8, delay: 0.32, ease }}
                             className="flex flex-col sm:flex-row gap-4 mb-12"
                         >
-                            <Link href="/properties"
+                            <a href={SHORTLET_URL} target="_blank" rel="noopener noreferrer"
                                 className="group bg-emerald-500 hover:bg-emerald-400 text-white px-8 py-4 rounded-2xl font-bold text-base shadow-xl shadow-emerald-500/30 transition-all duration-300 flex items-center justify-center gap-2"
                             >
-                                Explore Properties
+                                <Calendar className="w-4 h-4" />
+                                Book a Short Stay
                                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                            </Link>
-                            <Link href="/services"
+                            </a>
+                            <Link href="/properties"
                                 className="bg-white/10 hover:bg-white/18 backdrop-blur-sm border border-white/30 text-white px-8 py-4 rounded-2xl font-bold text-base transition-all duration-300 flex items-center justify-center gap-2"
                             >
-                                <Wrench className="w-4 h-4" />
-                                Our Services
+                                Explore Portfolio
+                                <ChevronRight className="w-4 h-4" />
                             </Link>
                         </motion.div>
 
@@ -240,60 +242,126 @@ export default function HomePage() {
             {/* ─── MARQUEE ──────────────────────────────────────────────── */}
             <MarqueeStrip />
 
-            {/* ─── BOOK NOW BANNER ──────────────────────────────────────── */}
-            <section className="relative overflow-hidden bg-white py-16">
-                <div className="max-w-7xl mx-auto px-6 lg:px-8">
-                    <motion.div
-                        initial={{ opacity: 0, y: 30 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                        className="relative rounded-3xl overflow-hidden"
-                    >
-                        {/* Background */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800" />
-                        <div className="absolute inset-0 opacity-[0.07]"
-                            style={{ backgroundImage: 'radial-gradient(circle, white 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}
-                        />
-                        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/10 rounded-full translate-x-1/3 -translate-y-1/2 blur-3xl pointer-events-none" />
-                        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-teal-300/20 rounded-full -translate-x-1/3 translate-y-1/2 blur-2xl pointer-events-none" />
+            {/* ─── SEQUOIA STAYS PLATFORM ───────────────────────────────── */}
+            <section className="relative overflow-hidden bg-gray-950 py-24">
+                {/* Background texture */}
+                <div className="absolute inset-0 opacity-[0.06]"
+                    style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)', backgroundSize: '48px 48px' }}
+                />
+                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/8 rounded-full translate-x-1/3 -translate-y-1/2 blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-teal-400/6 rounded-full -translate-x-1/3 translate-y-1/2 blur-3xl pointer-events-none" />
 
-                        <div className="relative z-10 px-8 py-14 sm:px-16 flex flex-col lg:flex-row items-center justify-between gap-10">
-                            {/* Text */}
-                            <div className="text-center lg:text-left">
-                                <div className="inline-flex items-center gap-2 bg-white/15 border border-white/25 text-white/90 text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-5">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    Instant Booking
-                                </div>
-                                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white leading-tight tracking-tight mb-4">
-                                    Ready for Your Next Stay?
-                                    <span className="block text-emerald-200 text-2xl sm:text-3xl font-bold mt-1">
-                                        Fully serviced apartments, Abuja.
-                                    </span>
-                                </h2>
-                                <p className="text-white/75 text-base sm:text-lg max-w-lg leading-relaxed">
-                                    Browse our curated short-let apartments, pick your dates, and book instantly — no middleman, no hassle.
-                                </p>
+                <div className="relative z-10 max-w-7xl mx-auto px-6 lg:px-8">
+                    <div className="grid lg:grid-cols-2 gap-16 items-center">
+                        {/* Left — text */}
+                        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}>
+                            <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-400/25 text-emerald-400 text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
+                                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                                Dedicated Booking Platform
+                            </div>
+                            <h2 className="text-4xl md:text-5xl font-black text-white leading-[1.08] tracking-tight mb-5">
+                                Book Your Stay on
+                                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 mt-1">
+                                    Sequoia Stays
+                                </span>
+                            </h2>
+                            <p className="text-white/60 text-lg leading-relaxed mb-8 max-w-lg">
+                                Our dedicated short-let platform gives you real-time availability, instant confirmation, and a seamless booking experience — all in one place.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-4 mb-10">
+                                {[
+                                    { icon: CheckCircle2, label: 'Real-Time Availability' },
+                                    { icon: CheckCircle2, label: 'Instant Confirmation' },
+                                    { icon: CheckCircle2, label: 'Secure Online Booking' },
+                                    { icon: CheckCircle2, label: 'No Hidden Fees' },
+                                ].map(f => (
+                                    <div key={f.label} className="flex items-center gap-2 text-white/70 text-sm">
+                                        <f.icon className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                        {f.label}
+                                    </div>
+                                ))}
                             </div>
 
-                            {/* CTA block */}
-                            <div className="flex flex-col items-center gap-5 shrink-0">
-                                <div className="flex items-center gap-4 text-white/80 text-sm">
-                                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-300" /> Instant Confirmation</div>
-                                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-300" /> No Hidden Fees</div>
-                                </div>
-                                <Link
-                                    href="/properties"
-                                    className="group relative inline-flex items-center justify-center gap-3 bg-white text-emerald-700 hover:bg-emerald-50 px-10 py-5 rounded-2xl font-black text-lg shadow-2xl shadow-black/25 hover:shadow-black/35 transition-all duration-300 hover:-translate-y-0.5"
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <a
+                                    href={SHORTLET_URL}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="group inline-flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-400 text-white px-8 py-4 rounded-2xl font-bold text-base shadow-xl shadow-emerald-500/20 transition-all duration-300"
                                 >
                                     <Calendar className="w-5 h-5" />
-                                    Browse Properties
-                                    <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                                </Link>
-                                <p className="text-white/55 text-xs">1-bedroom units from ₦75,000/night</p>
+                                    Browse Available Apartments
+                                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                                </a>
+                                <a
+                                    href={`${SHORTLET_URL}/booking`}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center justify-center gap-2 bg-white/8 hover:bg-white/14 border border-white/15 text-white/85 px-7 py-4 rounded-2xl font-semibold text-base transition-all duration-300"
+                                >
+                                    Check Availability
+                                </a>
                             </div>
-                        </div>
-                    </motion.div>
+                        </motion.div>
+
+                        {/* Right — platform showcase cards */}
+                        <motion.div
+                            initial={{ opacity: 0, x: 40 }} whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true }} transition={{ duration: 0.85, ease }}
+                            className="hidden lg:block"
+                        >
+                            <div className="relative">
+                                {/* Mock platform UI cards */}
+                                <div className="bg-white/5 border border-white/10 backdrop-blur-sm rounded-3xl p-6 space-y-3">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div>
+                                            <p className="text-white font-bold text-lg">Sequoia Stays</p>
+                                            <p className="text-white/40 text-xs">sequoiaprojects.com/stays</p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/30 px-3 py-1 rounded-full">
+                                            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                                            <span className="text-emerald-400 text-xs font-semibold">Live</span>
+                                        </div>
+                                    </div>
+
+                                    {[
+                                        { name: 'Arusha Court 1-Bed', price: '₦75,000', nights: 'per night', avail: true },
+                                        { name: 'Arusha Court 2-Bed', price: '₦120,000', nights: 'per night', avail: true },
+                                        { name: 'Executive Studio', price: '₦55,000', nights: 'per night', avail: false },
+                                    ].map((apt, i) => (
+                                        <div key={i} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/8 hover:border-emerald-400/30 transition-colors">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                                                    <Home className="w-5 h-5 text-emerald-400" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-white text-sm font-semibold">{apt.name}</p>
+                                                    <p className="text-white/40 text-xs">{apt.nights}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-emerald-400 font-bold text-sm">{apt.price}</p>
+                                                <span className={`text-xs font-medium ${apt.avail ? 'text-emerald-400' : 'text-white/30'}`}>
+                                                    {apt.avail ? '● Available' : '○ Booked'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="pt-2">
+                                        <div className="w-full bg-emerald-500 hover:bg-emerald-400 text-white py-3 rounded-xl font-bold text-sm text-center cursor-pointer transition-colors">
+                                            Book Now — Instant Confirmation
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Floating badge */}
+                                <div className="absolute -top-4 -right-4 bg-emerald-500 text-white rounded-2xl px-4 py-2 shadow-xl shadow-emerald-500/30">
+                                    <p className="text-xs font-bold uppercase tracking-wide">Powered by</p>
+                                    <p className="font-black text-sm">Sequoia Projects</p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
                 </div>
             </section>
 
@@ -488,18 +556,24 @@ export default function HomePage() {
                         {/* Short-Let */}
                         <motion.div custom={3} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
                             whileHover={{ y: -4 }}
-                            className="bg-gray-900 rounded-3xl p-8 flex flex-col justify-between group"
+                            className="bg-gray-900 rounded-3xl p-8 flex flex-col justify-between group relative overflow-hidden"
                         >
+                            <div className="absolute top-4 right-4">
+                                <span className="flex items-center gap-1 bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                                    Book Now
+                                </span>
+                            </div>
                             <div>
                                 <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-6">
                                     <Home className="w-6 h-6 text-emerald-400" />
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-3">Short-Let & Airbnb</h3>
-                                <p className="text-white/55 text-sm leading-relaxed">Complete short-let management: bookings, cleaning, guest communication, and revenue optimisation.</p>
+                                <p className="text-white/55 text-sm leading-relaxed">Fully serviced apartments available for nightly and weekly stays — book instantly on our dedicated platform.</p>
                             </div>
-                            <Link href="/services" className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold text-sm mt-6 group-hover:gap-2.5 transition-all">
-                                Learn more <ArrowRight className="w-4 h-4" />
-                            </Link>
+                            <a href={SHORTLET_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold text-sm mt-6 group-hover:gap-2.5 transition-all">
+                                Browse & Book on Sequoia Stays <ArrowRight className="w-4 h-4" />
+                            </a>
                         </motion.div>
 
                         {/* Consultancy */}
@@ -630,10 +704,10 @@ export default function HomePage() {
                             <p className="text-gray-500 mt-2">Handpicked premium developments across Abuja</p>
                         </motion.div>
                         <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
-                            <Link href="/properties" className="group inline-flex items-center gap-2 text-emerald-600 font-bold hover:text-emerald-700 transition-colors">
-                                View all properties
+                            <a href={SHORTLET_URL} target="_blank" rel="noopener noreferrer" className="group inline-flex items-center gap-2 text-emerald-600 font-bold hover:text-emerald-700 transition-colors">
+                                View all on Sequoia Stays
                                 <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                            </Link>
+                            </a>
                         </motion.div>
                     </div>
 
@@ -687,13 +761,19 @@ export default function HomePage() {
                     </div>
 
                     <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.4 }}
-                        className="text-center mt-12"
+                        className="text-center mt-12 flex flex-col sm:flex-row gap-4 justify-center"
                     >
-                        <Link href="/properties"
+                        <a href={SHORTLET_URL} target="_blank" rel="noopener noreferrer"
                             className="group inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-emerald-500/20 transition-all duration-300"
                         >
-                            Start Your Journey
+                            <Calendar className="w-4 h-4" />
+                            Book a Stay on Sequoia Stays
                             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                        </a>
+                        <Link href="/properties"
+                            className="inline-flex items-center gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-8 py-4 rounded-2xl font-bold transition-all duration-300"
+                        >
+                            View Our Portfolio
                         </Link>
                     </motion.div>
                 </div>
@@ -760,12 +840,13 @@ export default function HomePage() {
                             Whether you're looking to rent, buy, build, or invest — our team is ready to guide you every step of the way.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
-                            <Link href="/properties"
+                            <a href={SHORTLET_URL} target="_blank" rel="noopener noreferrer"
                                 className="group bg-emerald-500 hover:bg-emerald-400 text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all duration-300 flex items-center justify-center gap-2"
                             >
-                                Browse Properties
+                                <Calendar className="w-4 h-4" />
+                                Book on Sequoia Stays
                                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                            </Link>
+                            </a>
                             <Link href="/contact"
                                 className="bg-white/10 hover:bg-white/15 border border-white/20 text-white px-8 py-4 rounded-2xl font-bold transition-all duration-300 flex items-center justify-center gap-2 backdrop-blur-sm"
                             >

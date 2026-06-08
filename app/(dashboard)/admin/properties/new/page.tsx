@@ -21,7 +21,7 @@ interface PropertyFormData {
   bedrooms: number;
   bathrooms: number;
   livingRooms: number;
-  garages: number;
+  parking: number;
   description: string;
   amenities: string;
   entity: string;
@@ -49,7 +49,7 @@ export default function AddApartmentPage() {
     bedrooms: 1,
     bathrooms: 1,
     livingRooms: 1,
-    garages: 0,
+    parking: 0,
     description: '',
     amenities: '',
     entity: 'Sequoia Projects',
@@ -95,7 +95,7 @@ export default function AddApartmentPage() {
       formDataToSend.append('bedrooms', formData.bedrooms.toString());
       formDataToSend.append('bathrooms', formData.bathrooms.toString());
       formDataToSend.append('living_rooms', formData.livingRooms.toString());
-      formDataToSend.append('garages', formData.garages.toString());
+      formDataToSend.append('parking', formData.parking.toString());
       formDataToSend.append('description', formData.description);
       formDataToSend.append('entity', formData.entity);
       formDataToSend.append('featured', formData.featured.toString());
@@ -324,8 +324,8 @@ export default function AddApartmentPage() {
                 </label>
                 <input
                   type="number"
-                  name="garages"
-                  value={formData.garages}
+                  name="parking"
+                  value={formData.parking}
                   onChange={handleChange}
                   min="0"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"

@@ -27,6 +27,16 @@ export interface ApiBooking {
     status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
     payment_status: string;
     special_requests?: string;
+    cancellation_reason?: string;
+    checked_in_at?: string;
+    checked_out_at?: string;
+    occupancy_status?: string;
+    is_walk_in?: boolean;
+    address?: string;
+    id_type?: string;
+    id_document?: string;
+    id_document_url?: string;
+    purpose?: string;
     created_at: string;
     updated_at: string;
 }
@@ -38,6 +48,7 @@ export interface ApiPayment {
     amount: string;
     currency: string;
     payment_method: string;
+    beneficiary_name?: string;
     transaction_reference: string;
     gateway_response: any;
     status: string;
@@ -79,6 +90,7 @@ export interface ApiUserRole {
     name: string;
     description: string;
     permissions: string[];
+    allowed_locations: number[];
     is_superuser_role: boolean;
     is_default: boolean;
     user_count?: number;
@@ -215,7 +227,7 @@ export const adminApi = apiSlice.injectEndpoints({
             providesTags: (result, error, id) => [{ type: 'Booking', id }],
         }),
 
-        createBooking: builder.mutation<ApiBooking, Partial<ApiBooking> & { apartment_id: string }>({
+        createBooking: builder.mutation<{ success: boolean; message: string; booking: ApiBooking }, FormData>({
             query: (body) => ({
                 url: '/bookings/',
                 method: 'POST',
@@ -249,6 +261,18 @@ export const adminApi = apiSlice.injectEndpoints({
                 { type: 'Booking', id },
                 { type: 'Booking', id: 'LIST' },
             ],
+        }),
+
+        recordWalkInPayment: builder.mutation<
+            { success: boolean; message: string; payment: ApiPayment; booking: ApiBooking },
+            { bookingId: string; payment_method: 'cash' | 'pos' | 'bank_transfer' | 'card'; beneficiary_name: string }
+        >({
+            query: ({ bookingId, ...body }) => ({
+                url: `/bookings/${bookingId}/record_walkin_payment/`,
+                method: 'POST',
+                body,
+            }),
+            invalidatesTags: [{ type: 'Booking', id: 'LIST' }, { type: 'Payment', id: 'LIST' }],
         }),
 
         cancelBooking: builder.mutation<{ success: boolean; message: string; booking: ApiBooking }, string>({
@@ -469,6 +493,23 @@ export const adminApi = apiSlice.injectEndpoints({
             ],
         }),
 
+        // Apartment lock / unlock
+        lockApartment: builder.mutation<any, { id: string; reason?: string }>({
+            query: ({ id, reason }) => ({
+                url: `/apartments/${id}/lock/`,
+                method: 'POST',
+                body: { reason: reason ?? '' },
+            }),
+            invalidatesTags: ['Apartment'],
+        }),
+        unlockApartment: builder.mutation<any, string>({
+            query: (id) => ({
+                url: `/apartments/${id}/unlock/`,
+                method: 'POST',
+            }),
+            invalidatesTags: ['Apartment'],
+        }),
+
         // Activity Logs (read-only)
         getActivityLogs: builder.query<ApiPaginatedResponse<ApiActivityLog>, ActivityLogsQueryParams | void>({
             query: (params) => `/account/activity-logs/${buildQueryString(params || {})}`,
@@ -495,6 +536,7 @@ export const {
     useUpdateBookingStatusMutation,
     useUpdateBookingMutation,
     useCancelBookingMutation,
+    useRecordWalkInPaymentMutation,
     useGetPaymentsQuery,
     useGetPaymentQuery,
     useGetContactInquiriesQuery,
@@ -517,6 +559,9 @@ export const {
     useCreateRoleMutation,
     useUpdateRoleMutation,
     useDeleteRoleMutation,
+    // Apartment lock/unlock
+    useLockApartmentMutation,
+    useUnlockApartmentMutation,
     // Activity Logs
     useGetActivityLogsQuery,
     useGetActivityLogQuery,

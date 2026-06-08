@@ -1,0 +1,287 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Save } from 'lucide-react';
+import { toast } from 'sonner';
+import PropertyImageUpload, { PropertyImage } from '@/components/admin/PropertyImageUpload';
+import { useGetPropertyQuery, useUpdatePropertyMutation } from '@/lib/store/api/propertyApi';
+import { useGetLocationsQuery } from '@/lib/store/api/inventoryApi';
+
+interface BuildingFormData {
+  name: string;
+  description: string;
+  location_id: string;
+  amenities: string;
+  entity: string;
+  featured: boolean;
+  is_active: boolean;
+}
+
+export default function EditBuildingPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = params.id as string;
+
+  const { data: property, isLoading: propertyLoading } = useGetPropertyQuery(id);
+  const { data: locations = [], isLoading: locationsLoading } = useGetLocationsQuery({});
+  const [updateProperty] = useUpdatePropertyMutation();
+
+  const [loading, setLoading] = useState(false);
+  const [images, setImages] = useState<PropertyImage[]>([]);
+  const [formData, setFormData] = useState<BuildingFormData>({
+    name: '',
+    description: '',
+    location_id: '',
+    amenities: '',
+    entity: 'Sequoia Projects',
+    featured: false,
+    is_active: true,
+  });
+
+  // Populate form once property loads
+  useEffect(() => {
+    if (!property) return;
+    const amenitiesList = Array.isArray(property.amenities)
+      ? property.amenities.join(', ')
+      : typeof property.amenities === 'string'
+        ? property.amenities
+        : '';
+    setFormData({
+      name: property.name,
+      description: property.description,
+      location_id: property.location_details?.id?.toString() ?? '',
+      amenities: amenitiesList,
+      entity: property.entity ?? 'Sequoia Projects',
+      featured: property.featured,
+      is_active: property.is_active,
+    });
+    if (property.images?.length) {
+      setImages(
+        property.images.map(img => ({
+          id: String(img.id),
+          preview: img.image_url ?? img.image,
+          order: img.order ?? 0,
+          is_primary: img.is_primary ?? false,
+          category: img.category ?? 'Other',
+          file: undefined,
+        }))
+      );
+    }
+  }, [property]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.location_id) {
+      toast.error('Please select a location');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('name', formData.name);
+      fd.append('description', formData.description);
+      fd.append('location_id', formData.location_id);
+      fd.append('entity', formData.entity);
+      fd.append('featured', formData.featured.toString());
+      fd.append('is_active', formData.is_active.toString());
+
+      const amenitiesList = formData.amenities
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a.length > 0);
+      fd.append('amenities', JSON.stringify(amenitiesList));
+
+      images.forEach((image, index) => {
+        if (image.file) {
+          fd.append('images', image.file);
+          fd.append(`image_${index}_order`, image.order.toString());
+          fd.append(`image_${index}_is_primary`, image.is_primary.toString());
+        }
+      });
+
+      toast.loading('Saving changes...', { id: 'edit-building' });
+      await updateProperty({ id, formData: fd }).unwrap();
+      toast.success('Building updated successfully!', { id: 'edit-building' });
+      router.push('/admin/properties');
+    } catch (error: any) {
+      const message = error?.data?.detail || error?.data?.message || 'Failed to update building';
+      toast.error(message, { id: 'edit-building' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (propertyLoading) {
+    return (
+      <div className="p-8 text-center text-gray-500">
+        <div className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-emerald-600 border-r-transparent mb-3" />
+        <p>Loading building details…</p>
+      </div>
+    );
+  }
+
+  if (!property) {
+    return (
+      <div className="p-8 text-center text-red-500">
+        <p className="text-lg font-semibold">Building not found</p>
+        <Link href="/admin/properties" className="mt-4 inline-block text-emerald-600 underline">Back to properties</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mb-6">
+        <Link href="/admin/properties" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Buildings
+        </Link>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Edit Building</h1>
+        <p className="text-gray-600 mt-1">{property.name}</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="max-w-4xl">
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h2>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Building Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Location *</label>
+                {locationsLoading ? (
+                  <div className="animate-pulse h-10 bg-gray-100 rounded-lg" />
+                ) : (
+                  <div className="relative">
+                    <select
+                      name="location_id"
+                      value={formData.location_id}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white font-medium"
+                    >
+                      <option value="">Select a location…</option>
+                      {(locations as any[]).map((loc: any) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name} {loc.state ? `(${loc.state})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd" /></svg>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Description</h2>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              required
+              rows={5}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h2>
+            <textarea
+              name="amenities"
+              value={formData.amenities}
+              onChange={handleChange}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="Enter amenities separated by commas (e.g., 24/7 Power, Security, Parking)"
+            />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Building Images</h2>
+            <PropertyImageUpload images={images} onChange={setImages} />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Additional Options</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Entity / Owner</label>
+                <input
+                  type="text"
+                  name="entity"
+                  value={formData.entity}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="featured"
+                    name="featured"
+                    checked={formData.featured}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="featured" className="text-sm font-medium text-gray-700">Mark as Featured</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="is_active"
+                    name="is_active"
+                    checked={formData.is_active}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="is_active" className="text-sm font-medium text-gray-700">Active</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 pt-4">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              <Save className="h-5 w-5" />
+              {loading ? 'Saving…' : 'Save Changes'}
+            </button>
+            <Link href="/admin/properties">
+              <button type="button" className="px-8 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium">
+                Cancel
+              </button>
+            </Link>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

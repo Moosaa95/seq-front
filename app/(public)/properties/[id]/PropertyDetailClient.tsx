@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   MapPin, Check, ArrowLeft, Building2, Home as HomeIcon, Navigation,
-  BedDouble, Bath, Users, Calendar,
+  BedDouble, Bath, Users, Calendar, ExternalLink,
 } from 'lucide-react';
 import ImageWithLoader from '@/components/ImageWithLoader';
-import BookingModal from '@/components/BookingModal';
 import { useGetPropertyQuery, useGetApartmentsQuery, ApiApartment } from '@/lib/store/api/propertyApi';
+
+const SHORTLET_URL = process.env.NEXT_PUBLIC_SHORTLET_URL || 'http://localhost:3001';
 
 // ─── Map ──────────────────────────────────────────────────────────────────────
 function PropertyMap({ latitude, longitude, address, name }: {
@@ -65,7 +66,7 @@ function PropertyMap({ latitude, longitude, address, name }: {
 }
 
 // ─── Apartment unit card ──────────────────────────────────────────────────────
-function UnitCard({ apt, index, onBook }: { apt: ApiApartment; index: number; onBook: (apt: ApiApartment) => void }) {
+function UnitCard({ apt, index }: { apt: ApiApartment; index: number }) {
   const primaryImg = apt.primary_image
     || apt.images?.find((img) => img.is_primary)?.image_url
     || apt.images?.[0]?.image_url
@@ -137,14 +138,20 @@ function UnitCard({ apt, index, onBook }: { apt: ApiApartment; index: number; on
           {apt.description}
         </p>
 
-        <button
-          onClick={() => onBook(apt)}
-          disabled={apt.is_available === false}
-          className="w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-md hover:shadow-emerald-500/30 hover:shadow-lg"
+        <a
+          href={apt.is_available === false ? undefined : SHORTLET_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-disabled={apt.is_available === false}
+          className={`w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 ${
+            apt.is_available === false
+              ? 'opacity-50 cursor-not-allowed pointer-events-none bg-emerald-600 text-white'
+              : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-md hover:shadow-emerald-500/30 hover:shadow-lg'
+          }`}
         >
-          <Calendar className="w-4 h-4" />
-          Book Now
-        </button>
+          <ExternalLink className="w-4 h-4" />
+          Book on Sequoia Stays
+        </a>
       </div>
     </motion.div>
   );
@@ -157,7 +164,6 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
     { parent_property: propertyId },
   );
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [selectedApt, setSelectedApt] = useState<ApiApartment | null>(null);
 
   const apartments = (apartmentsData?.results || []).filter(
     (apt) => apt.parent_property === propertyId,
@@ -292,7 +298,7 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Available Units</h2>
-              <p className="text-gray-500 text-sm mt-1">Select a unit below and book instantly</p>
+              <p className="text-gray-500 text-sm mt-1">Browse units below — booking is done on our dedicated platform</p>
             </div>
             {apartments.length > 0 && (
               <span className="text-sm font-semibold px-4 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
@@ -317,7 +323,7 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
           ) : apartments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {apartments.map((apt, i) => (
-                <UnitCard key={apt.id} apt={apt} index={i} onBook={setSelectedApt} />
+                <UnitCard key={apt.id} apt={apt} index={i} />
               ))}
             </div>
           ) : (
@@ -330,13 +336,6 @@ export default function PropertyDetailClient({ propertyId }: { propertyId: strin
         </motion.div>
       </div>
 
-      {/* Inline booking modal */}
-      <BookingModal
-        isOpen={!!selectedApt}
-        onClose={() => setSelectedApt(null)}
-        propertyTitle={selectedApt?.title || ''}
-        propertyId={selectedApt?.id || ''}
-      />
     </div>
   );
 }

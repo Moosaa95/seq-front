@@ -131,6 +131,19 @@ export interface CreateInventoryMovementInput {
     performed_by: string;
 }
 
+export interface TransferInventoryInput {
+    item_id: string;
+    quantity: number;
+    reason: string;
+    performed_by: string;
+    from_location_id?: string;
+    from_property_id?: string;
+    from_apartment_id?: string;
+    to_location_id?: string;
+    to_property_id?: string;
+    to_apartment_id?: string;
+}
+
 export const inventoryApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
         // Locations
@@ -343,6 +356,14 @@ export const inventoryApi = apiSlice.injectEndpoints({
             }),
             invalidatesTags: ['InventoryMovement', 'LocationInventory'],
         }),
+        transferInventory: builder.mutation<InventoryMovement, TransferInventoryInput>({
+            query: (body) => ({
+                url: '/inventory-movements/transfer/',
+                method: 'POST',
+                body,
+            }),
+            invalidatesTags: ['InventoryMovement', 'LocationInventory', 'PropertyInventory', 'ApartmentInventory'],
+        }),
     }),
 });
 
@@ -377,4 +398,5 @@ export const {
     // Inventory Movements
     useGetInventoryMovementsQuery,
     useCreateInventoryMovementMutation,
+    useTransferInventoryMutation,
 } = inventoryApi;

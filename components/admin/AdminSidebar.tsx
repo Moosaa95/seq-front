@@ -21,6 +21,7 @@ import {
   Shield,
   Activity,
   UserCog,
+  BarChart2,
 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { hasPermission } from '@/lib/store/slices/authSlice';
@@ -42,6 +43,7 @@ const navigation: NavItem[] = [
   { name: 'Inquiries', href: '/admin/inquiries', icon: MessageSquare, permission: 'inquiry:read' },
   { name: 'Customers', href: '/admin/customers', icon: Users, permission: 'user:read' },
   { name: 'Inventory', href: '/admin/inventory', icon: Box, permission: 'inventory:read' },
+  { name: 'Reports', href: '/admin/reports', icon: BarChart2, permission: 'booking:read' },
   { name: 'Disputes', href: '/admin/disputes', icon: AlertCircle, permission: 'booking:read' },
   // Admin section
   { name: 'User Management', href: '/admin/users', icon: UserCog, permission: 'user:read', divider: true },

@@ -1,6 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Box, MapPin, ArrowRightLeft, Loader2, X, Plus, Search, AlertTriangle,
+    ChevronRight, PackageOpen, Truck, BarChart3, Building2, Home,
+    TrendingUp, TrendingDown, RefreshCw, Edit2, Trash2, Eye,
+} from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { toast } from 'sonner';
+
 import {
     useGetLocationsQuery,
     useGetInventoryItemsQuery,
@@ -8,717 +17,722 @@ import {
     useGetPropertyInventoryQuery,
     useGetApartmentInventoryQuery,
     useGetInventoryMovementsQuery,
-    useDeleteLocationMutation,
+    useTransferInventoryMutation,
     useDeleteInventoryItemMutation,
-    useUpdateLocationMutation,
-    useUpdateInventoryItemMutation,
+    useDeleteLocationMutation,
     type Location,
     type InventoryItem,
     type LocationInventory,
     type PropertyInventory,
     type ApartmentInventory,
     type InventoryMovement,
+    type TransferInventoryInput,
 } from '@/lib/store/api/inventoryApi';
-import { DataTable } from '@/components/admin/DataTable';
-import { Plus, Edit, Trash, Box, Home, Truck, Loader2, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { useGetApartmentsQuery, useGetPropertiesQuery } from '@/lib/store/api/propertyApi';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/lib/store';
 
 import AddLocationModal from '@/components/admin/inventory/AddLocationModal';
 import AddItemModal from '@/components/admin/inventory/AddItemModal';
 import AddStockModal from '@/components/admin/inventory/AddStockModal';
 import RecordMovementModal from '@/components/admin/inventory/RecordMovementModal';
-import { NIGERIA_STATES, getLGAsForState } from '@/lib/data/nigeria-states-lgas';
 
-export default function InventoryPage() {
-    const [activeTab, setActiveTab] = useState<'locations' | 'items' | 'stock' | 'property' | 'apartment' | 'movements'>('locations');
-    const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-    const [isItemModalOpen, setIsItemModalOpen] = useState(false);
-    const [isStockModalOpen, setIsStockModalOpen] = useState(false);
-    const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
+// ─── Color tokens ──────────────────────────────────────────────────────────────
+const DARK = '#403D3D';
 
-    return (
-        <div className="space-y-6">
-            <AddLocationModal isOpen={isLocationModalOpen} onClose={() => setIsLocationModalOpen(false)} />
-            <AddItemModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} />
-            <AddStockModal isOpen={isStockModalOpen} onClose={() => setIsStockModalOpen(false)} />
-            <RecordMovementModal isOpen={isMovementModalOpen} onClose={() => setIsMovementModalOpen(false)} />
+type TopTab = 'items' | 'locations' | 'movements';
 
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
-                    <p className="text-sm text-gray-500 mt-1">Manage locations, items, stock levels, and audit trail</p>
-                </div>
+const MOVEMENT_LABELS: Record<string, { label: string; color: string; icon: typeof TrendingUp }> = {
+    initial:        { label: 'Initial Stock',    color: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: Plus },
+    restock:        { label: 'Restocked',         color: 'text-blue-700 bg-blue-50 border-blue-200',         icon: TrendingUp },
+    assign:         { label: 'Assigned Out',      color: 'text-amber-700 bg-amber-50 border-amber-200',      icon: ArrowRightLeft },
+    return:         { label: 'Returned',          color: 'text-purple-700 bg-purple-50 border-purple-200',   icon: RefreshCw },
+    transferred:    { label: 'Transferred',       color: 'text-cyan-700 bg-cyan-50 border-cyan-200',         icon: Truck },
+    client_request: { label: 'Client Request',   color: 'text-orange-700 bg-orange-50 border-orange-200',   icon: Home },
+    disposed:       { label: 'Disposed',          color: 'text-red-700 bg-red-50 border-red-200',            icon: Trash2 },
+    damaged:        { label: 'Damaged',           color: 'text-rose-700 bg-rose-50 border-rose-200',         icon: AlertTriangle },
+};
 
-                <div className="flex gap-2">
-                    {activeTab === 'locations' && (
-                        <button
-                            onClick={() => setIsLocationModalOpen(true)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Add Location
-                        </button>
-                    )}
-                    {activeTab === 'items' && (
-                        <button
-                            onClick={() => setIsItemModalOpen(true)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            New Item
-                        </button>
-                    )}
-                    {activeTab === 'stock' && (
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setIsMovementModalOpen(true)}
-                                className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                            >
-                                <Truck className="w-4 h-4" />
-                                Record Movement
-                            </button>
-                            <button
-                                onClick={() => setIsStockModalOpen(true)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Init Stock
-                            </button>
-                        </div>
-                    )}
-                    {(activeTab === 'movements' || activeTab === 'property' || activeTab === 'apartment') && (
-                        <button
-                            onClick={() => setIsMovementModalOpen(true)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Record Movement
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8 overflow-x-auto">
-                    {[
-                        { id: 'locations', name: 'Locations', icon: <Home className="w-4 h-4" /> },
-                        { id: 'items', name: 'Items', icon: <Box className="w-4 h-4" /> },
-                        { id: 'stock', name: 'Stock Levels', icon: <Box className="w-4 h-4" /> },
-                        { id: 'property', name: 'Building Inventory', icon: <Home className="w-4 h-4" /> },
-                        { id: 'apartment', name: 'Apartment Inventory', icon: <Home className="w-4 h-4" /> },
-                        { id: 'movements', name: 'Audit Trail', icon: <Truck className="w-4 h-4" /> },
-                    ].map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`
-                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2
-                ${activeTab === tab.id
-                                    ? 'border-emerald-600 text-emerald-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                }
-              `}
-                        >
-                            {tab.icon}
-                            {tab.name}
-                        </button>
-                    ))}
-                </nav>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[400px]">
-                {activeTab === 'locations' && <LocationsTab />}
-                {activeTab === 'items' && <ItemsTab />}
-                {activeTab === 'stock' && <StockTab />}
-                {activeTab === 'property' && <PropertyInventoryTab />}
-                {activeTab === 'apartment' && <ApartmentInventoryTab />}
-                {activeTab === 'movements' && <MovementsTab />}
-            </div>
-        </div>
-    );
+function fmtDate(d: string) {
+    try { return format(parseISO(d), 'd MMM yyyy · h:mm a'); } catch { return d; }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Edit Location Modal
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Transfer Modal ────────────────────────────────────────────────────────────
+interface TransferModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    preItem?: InventoryItem;
+}
 
-function EditLocationModal({ location, onClose }: { location: Location; onClose: () => void }) {
-    const [updateLocation, { isLoading }] = useUpdateLocationMutation();
-    const [formData, setFormData] = useState({
-        name: location.name,
-        address: location.address || '',
-        state: location.state || '',
-        lga: location.lga || '',
-        country: location.country || 'Nigeria',
-        is_active: location.is_active,
-    });
+function TransferModal({ isOpen, onClose, preItem }: TransferModalProps) {
+    const [transfer, { isLoading }] = useTransferInventoryMutation();
+    const { data: locationsRaw } = useGetLocationsQuery({});
+    const { data: propertiesRaw } = useGetPropertiesQuery({});
+    const { data: apartmentsRaw } = useGetApartmentsQuery({ page_size: 200 });
+    const { data: allItems } = useGetInventoryItemsQuery({});
 
-    const availableLGAs = formData.state ? getLGAsForState(formData.state) : [];
+    const locations = locationsRaw ?? [];
+    const properties = propertiesRaw?.results ?? [];
+    const apartments = apartmentsRaw?.results ?? [];
+    const items = allItems ?? [];
+
+    type Level = 'location' | 'property' | 'apartment';
+    const [itemId,       setItemId]       = useState(preItem?.id.toString() ?? '');
+    const [qty,          setQty]          = useState(1);
+    const [reason,       setReason]       = useState('');
+    const [performedBy,  setPerformedBy]  = useState('');
+    const [fromLevel,    setFromLevel]    = useState<Level>('location');
+    const [fromId,       setFromId]       = useState('');
+    const [toLevel,      setToLevel]      = useState<Level>('property');
+    const [toId,         setToId]         = useState('');
+
+    const levelOptions = (level: Level) => {
+        if (level === 'location')  return locations.map(l => ({ value: l.id.toString(), label: l.name }));
+        if (level === 'property')  return properties.map(p => ({ value: p.id.toString(), label: p.name }));
+        return apartments.map(a => ({ value: a.id.toString(), label: `${a.title} ${a.property_details?.name ? '· ' + a.property_details.name : ''}` }));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!itemId || !fromId || !toId || qty < 1) {
+            toast.error('Please fill all required fields.'); return;
+        }
+        const body: TransferInventoryInput = {
+            item_id: itemId, quantity: qty, reason, performed_by: performedBy,
+            [`from_${fromLevel}_id`]: fromId,
+            [`to_${toLevel}_id`]: toId,
+        } as any;
         try {
-            await updateLocation({ id: location.id as any, data: formData }).unwrap();
-            toast.success('Location updated');
+            await transfer(body).unwrap();
+            toast.success('Transfer recorded successfully.');
             onClose();
-        } catch {
-            toast.error('Failed to update location');
+        } catch (err: any) {
+            toast.error(err?.data?.detail ?? 'Transfer failed.');
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="flex items-center justify-between p-4 border-b">
-                    <h2 className="text-lg font-bold text-gray-900">Edit Location</h2>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
-                        <X className="h-5 w-5 text-gray-500" />
-                    </button>
-                </div>
-                <form onSubmit={handleSubmit} className="p-4 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Location Name</label>
-                        <input type="text" required value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                        <input type="text" value={formData.country}
-                            onChange={e => setFormData({ ...formData, country: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                            <select value={formData.state}
-                                onChange={e => setFormData({ ...formData, state: e.target.value, lga: '' })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
-                                <option value="">Select State</option>
-                                {NIGERIA_STATES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">LGA</label>
-                            <select value={formData.lga}
-                                onChange={e => setFormData({ ...formData, lga: e.target.value })}
-                                disabled={!formData.state}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white disabled:bg-gray-100">
-                                <option value="">{formData.state ? 'Select LGA' : 'Pick state first'}</option>
-                                {availableLGAs.map(lga => <option key={lga} value={lga}>{lga}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                        <textarea value={formData.address}
-                            onChange={e => setFormData({ ...formData, address: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500" rows={3} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input type="checkbox" id="edit_is_active" checked={formData.is_active}
-                            onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
-                            className="rounded border-gray-300 text-emerald-600" />
-                        <label htmlFor="edit_is_active" className="text-sm text-gray-700">Active</label>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isLoading}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2">
-                            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Save Changes
-                        </button>
-                    </div>
-                </form>
-            </div>
+    const LevelSelect = ({ value, onChange, excludeLevel }: { value: Level; onChange: (v: Level) => void; excludeLevel?: Level }) => (
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {(['location', 'property', 'apartment'] as Level[]).filter(l => l !== excludeLevel).map(l => (
+                <button key={l} type="button" onClick={() => onChange(l)}
+                    className={`flex-1 text-xs font-semibold py-1.5 px-2 rounded-md transition-colors capitalize ${value === l ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                >{l}</button>
+            ))}
         </div>
     );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Edit Item Modal
-// ─────────────────────────────────────────────────────────────────────────────
-
-function EditItemModal({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
-    const [updateItem, { isLoading }] = useUpdateInventoryItemMutation();
-    const [formData, setFormData] = useState({
-        name: item.name,
-        category: item.category,
-        description: item.description || '',
-        unit: item.unit,
-        is_active: item.is_active,
-    });
-
-    const categories = ['Linens', 'Kitchenware', 'Toiletries', 'Electronic', 'Furniture', 'Other'];
-    const units = ['piece', 'set', 'box', 'kg', 'liter'];
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            await updateItem({ id: item.id as any, data: formData }).unwrap();
-            toast.success('Item updated');
-            onClose();
-        } catch {
-            toast.error('Failed to update item');
-        }
-    };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="flex items-center justify-between p-4 border-b">
-                    <h2 className="text-lg font-bold text-gray-900">Edit Item</h2>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X className="h-5 w-5 text-gray-500" /></button>
-                </div>
-                <form onSubmit={handleSubmit} className="p-4 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
-                        <input type="text" required value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500" />
+        <AnimatePresence>
+            {isOpen && (
+                <>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                        <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.96, y: 12 }} transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg pointer-events-auto border border-gray-200"
+                        >
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: DARK }}>
+                                        <ArrowRightLeft className="h-4 w-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-gray-900 text-sm">Record Transfer</p>
+                                        <p className="text-xs text-gray-400">Move items between levels</p>
+                                    </div>
+                                </div>
+                                <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4 text-gray-400" /></button>
+                            </div>
+
+                            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+                                {/* Item */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Item *</label>
+                                    <select value={itemId} onChange={e => setItemId(e.target.value)} required
+                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:ring-2 focus:ring-[#403D3D]/30 focus:border-[#403D3D] outline-none">
+                                        <option value="">— Select item —</option>
+                                        {items.map(it => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
+                                    </select>
+                                </div>
+
+                                {/* From / To */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">From *</label>
+                                        <LevelSelect value={fromLevel} onChange={l => { setFromLevel(l); setFromId(''); }} />
+                                        <select value={fromId} onChange={e => setFromId(e.target.value)} required
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:ring-2 focus:ring-[#403D3D]/30 focus:border-[#403D3D] outline-none">
+                                            <option value="">— Select —</option>
+                                            {levelOptions(fromLevel).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">To *</label>
+                                        <LevelSelect value={toLevel} onChange={l => { setToLevel(l); setToId(''); }} />
+                                        <select value={toId} onChange={e => setToId(e.target.value)} required
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:ring-2 focus:ring-[#403D3D]/30 focus:border-[#403D3D] outline-none">
+                                            <option value="">— Select —</option>
+                                            {levelOptions(toLevel).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Quantity */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Quantity *</label>
+                                    <input type="number" min={1} value={qty} onChange={e => setQty(Number(e.target.value))} required
+                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#403D3D]/30 focus:border-[#403D3D] outline-none" />
+                                </div>
+
+                                {/* Reason & performed by */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Reason</label>
+                                        <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Cleaning supply run"
+                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#403D3D]/30 focus:border-[#403D3D] outline-none" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Performed By</label>
+                                        <input value={performedBy} onChange={e => setPerformedBy(e.target.value)} placeholder="Staff name"
+                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#403D3D]/30 focus:border-[#403D3D] outline-none" />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 pt-1">
+                                    <button type="button" onClick={onClose}
+                                        className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" disabled={isLoading}
+                                        className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                                        style={{ background: DARK }}>
+                                        {isLoading ? 'Recording…' : 'Record Transfer'}
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                            <select required value={formData.category}
-                                onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                <option value="">Select...</option>
-                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
-                            <select value={formData.unit}
-                                onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                {units.map(u => <option key={u} value={u}>{u}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <textarea value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500" rows={2} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input type="checkbox" id="edit_item_active" checked={formData.is_active}
-                            onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
-                            className="rounded border-gray-300 text-emerald-600" />
-                        <label htmlFor="edit_item_active" className="text-sm text-gray-700">Active</label>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isLoading}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2">
-                            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Save Changes
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tab Components
-// ─────────────────────────────────────────────────────────────────────────────
-
-function LocationsTab() {
-    const { data: locations, isLoading } = useGetLocationsQuery({});
-    const [deleteLocation, { isLoading: isDeleting }] = useDeleteLocationMutation();
-    const [editTarget, setEditTarget] = useState<Location | null>(null);
-
-    const handleDelete = async (loc: Location) => {
-        if (!confirm(`Delete location "${loc.name}"? This cannot be undone.`)) return;
-        try {
-            await deleteLocation(loc.id as any).unwrap();
-            toast.success('Location deleted');
-        } catch {
-            toast.error('Failed to delete location');
-        }
-    };
-
-    const columns = [
-        {
-            header: 'Name',
-            accessorKey: 'name',
-            cell: ({ getValue }: any) => <span className="font-medium text-gray-900">{getValue()}</span>,
-        },
-        {
-            header: 'Address',
-            accessorKey: 'address',
-            cell: ({ getValue }: any) => (
-                <span className="text-gray-600 block max-w-xs truncate" title={getValue() || ''}>{getValue() || '-'}</span>
-            ),
-        },
-        {
-            header: 'State / LGA',
-            accessorKey: 'state',
-            cell: ({ row }: any) => (
-                <span className="text-gray-700">
-                    {row.original.state || '-'}{row.original.lga ? ` / ${row.original.lga}` : ''}
-                </span>
-            ),
-        },
-        {
-            header: 'Country',
-            accessorKey: 'country',
-            cell: ({ getValue }: any) => <span className="text-gray-700">{getValue() || '-'}</span>,
-        },
-        {
-            header: 'Status',
-            accessorKey: 'is_active',
-            cell: ({ getValue }: any) => (
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getValue() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {getValue() ? 'Active' : 'Inactive'}
-                </span>
-            ),
-        },
-        {
-            header: 'Items',
-            accessorKey: 'inventory_count',
-            cell: ({ getValue }: any) => <span className="font-mono text-gray-900">{getValue() || 0}</span>,
-        },
-    ];
-
-    if (isLoading) return <div className="text-center py-10">Loading locations...</div>;
-
-    return (
-        <>
-            {editTarget && <EditLocationModal location={editTarget} onClose={() => setEditTarget(null)} />}
-            <DataTable
-                data={locations || []}
-                columns={columns}
-                searchPlaceholder="Search locations..."
-                actions={(row: Location) => (
-                    <div className="flex gap-2">
-                        <button onClick={() => setEditTarget(row)} className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
-                            <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(row)} disabled={isDeleting}
-                            className="p-1 hover:bg-gray-100 rounded text-red-600 disabled:opacity-50" title="Delete">
-                            <Trash className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-            />
-        </>
-    );
-}
-
-function ItemsTab() {
-    const { data: items, isLoading } = useGetInventoryItemsQuery({});
-    const [deleteItem, { isLoading: isDeleting }] = useDeleteInventoryItemMutation();
-    const [editTarget, setEditTarget] = useState<InventoryItem | null>(null);
-
-    const handleDelete = async (item: InventoryItem) => {
-        if (!confirm(`Delete item "${item.name}"? This cannot be undone.`)) return;
-        try {
-            await deleteItem(item.id as any).unwrap();
-            toast.success('Item deleted');
-        } catch {
-            toast.error('Failed to delete item');
-        }
-    };
-
-    const columns = [
-        {
-            header: 'Item',
-            accessorKey: 'name',
-            cell: ({ getValue, row }: any) => (
-                <div className="flex items-center gap-3">
-                    {row.original.image_url ? (
-                        <img src={row.original.image_url} alt={getValue()} className="h-10 w-10 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
-                    ) : (
-                        <div className="h-10 w-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center flex-shrink-0">
-                            <Box className="h-5 w-5 text-gray-400" />
-                        </div>
-                    )}
-                    <span className="font-medium text-gray-900">{getValue()}</span>
-                </div>
-            ),
-        },
-        {
-            header: 'Category',
-            accessorKey: 'category',
-            cell: ({ getValue }: any) => (
-                <span className="text-gray-700 bg-gray-100 px-2 py-1 rounded text-xs uppercase tracking-wide">{getValue()}</span>
-            ),
-        },
-        {
-            header: 'Unit',
-            accessorKey: 'unit',
-            cell: ({ getValue }: any) => <span className="text-gray-600 text-sm">{getValue()}</span>,
-        },
-        {
-            header: 'Status',
-            accessorKey: 'is_active',
-            cell: ({ getValue }: any) => (
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getValue() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {getValue() ? 'Active' : 'Inactive'}
-                </span>
-            ),
-        },
-    ];
-
-    if (isLoading) return <div className="text-center py-10">Loading items...</div>;
-
-    return (
-        <>
-            {editTarget && <EditItemModal item={editTarget} onClose={() => setEditTarget(null)} />}
-            <DataTable
-                data={items || []}
-                columns={columns}
-                searchPlaceholder="Search items..."
-                actions={(row: InventoryItem) => (
-                    <div className="flex gap-2">
-                        <button onClick={() => setEditTarget(row)} className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
-                            <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(row)} disabled={isDeleting}
-                            className="p-1 hover:bg-gray-100 rounded text-red-600 disabled:opacity-50" title="Delete">
-                            <Trash className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-            />
-        </>
-    );
-}
-
-function StockTab() {
-    const { data: stock, isLoading } = useGetLocationInventoryQuery({});
-
-    const columns = [
-        {
-            header: 'Location',
-            accessorKey: 'location_details',
-            cell: ({ getValue }: any) => {
-                const loc = getValue();
-                return <span className="font-medium text-gray-900">{loc?.name || 'Unknown Location'}</span>;
-            },
-        },
-        {
-            header: 'Item',
-            accessorKey: 'item_details',
-            cell: ({ getValue }: any) => {
-                const item = getValue();
-                return (
-                    <div>
-                        <span className="block font-medium text-gray-900">{item?.name || 'Unknown Item'}</span>
-                        <span className="text-xs text-gray-500">{item?.category}</span>
-                    </div>
-                );
-            },
-        },
-        {
-            header: 'Quantity',
-            accessorKey: 'quantity',
-            cell: ({ getValue, row }: any) => (
-                <span className={`font-mono font-bold ${row.original.is_low_stock ? 'text-red-600' : 'text-green-600'}`}>
-                    {getValue()}
-                </span>
-            ),
-        },
-        { header: 'Threshold', accessorKey: 'min_threshold' },
-        {
-            header: 'Status',
-            accessorKey: 'is_low_stock',
-            cell: ({ getValue }: any) => (
-                getValue()
-                    ? <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">Low Stock</span>
-                    : <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">OK</span>
-            ),
-        },
-    ];
-
-    if (isLoading) return <div className="text-center py-10">Loading stock data...</div>;
-
-    return (
-        <DataTable
-            data={stock || []}
-            columns={columns}
-            searchPlaceholder="Search stock..."
-            actions={(row: LocationInventory) => (
-                <div className="flex gap-2">
-                    <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Update Stock">
-                        <Edit className="w-4 h-4" />
-                    </button>
-                </div>
+                </>
             )}
-        />
+        </AnimatePresence>
     );
 }
 
-function PropertyInventoryTab() {
-    const { data: propInv, isLoading } = useGetPropertyInventoryQuery({});
+// ─── Item Detail Panel ─────────────────────────────────────────────────────────
+function ItemDetailPanel({ item, onClose, onTransfer }: { item: InventoryItem; onClose: () => void; onTransfer: (item: InventoryItem) => void }) {
+    const { data: locStock }  = useGetLocationInventoryQuery({ item_id: item.id });
+    const { data: propStock } = useGetPropertyInventoryQuery({ item_id: item.id });
+    const { data: aptStock }  = useGetApartmentInventoryQuery({ item_id: item.id });
+    const { data: movements } = useGetInventoryMovementsQuery({ item_id: item.id });
 
-    const columns = [
-        {
-            header: 'Building',
-            accessorKey: 'property_details',
-            cell: ({ getValue }: any) => {
-                const prop = getValue();
-                return <span className="font-medium">{prop?.name || '-'}</span>;
-            },
-        },
-        {
-            header: 'Item',
-            accessorKey: 'item_details',
-            cell: ({ getValue }: any) => {
-                const item = getValue();
-                return (
-                    <div className="flex items-center gap-2">
-                        {item?.image_url && <img src={item.image_url} alt={item.name} className="h-6 w-6 rounded object-cover" />}
-                        <span>{item?.name || '-'}</span>
-                        {item?.category && <span className="text-xs text-gray-400">({item.category})</span>}
-                    </div>
-                );
-            },
-        },
-        {
-            header: 'Qty',
-            accessorKey: 'quantity',
-            cell: ({ getValue }: any) => <span className="font-mono font-medium">{getValue()}</span>,
-        },
-    ];
+    const locStockArr  = locStock  ?? [];
+    const propStockArr = propStock ?? [];
+    const aptStockArr  = aptStock  ?? [];
+    const movArr       = movements ?? [];
 
-    if (isLoading) return <div className="text-center py-10">Loading building inventory...</div>;
+    const totalStock = locStockArr.reduce((s, x) => s + x.quantity, 0)
+        + propStockArr.reduce((s, x) => s + x.quantity, 0)
+        + aptStockArr.reduce((s, x) => s + x.quantity, 0);
 
     return (
-        <div>
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
-                <strong>Building Inventory</strong> tracks items permanently assigned to a property/building — e.g. fire extinguishers, furniture, CCTV equipment. Use <em>Record Movement</em> (type: Assign to Property) to add items here.
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+            className="flex flex-col h-full"
+        >
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                    <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                        <ChevronRight className="h-4 w-4 text-gray-400 rotate-180" />
+                    </button>
+                    <div>
+                        <p className="font-bold text-gray-900">{item.name}</p>
+                        <p className="text-xs text-gray-400">{item.category} · {item.unit}</p>
+                    </div>
+                </div>
+                <button onClick={() => onTransfer(item)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-colors"
+                    style={{ background: DARK }}>
+                    <ArrowRightLeft className="h-3.5 w-3.5" /> Transfer
+                </button>
             </div>
-            <DataTable
-                data={propInv || []}
-                columns={columns}
-                searchPlaceholder="Search building inventory..."
-                actions={(row: PropertyInventory) => (
-                    <div className="flex gap-2">
-                        <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
-                            <Edit className="w-4 h-4" />
-                        </button>
+
+            <div className="flex-1 overflow-y-auto">
+                {/* Total stock summary */}
+                <div className="p-5 border-b border-gray-100">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Current Stock Distribution</p>
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                        <div className="text-center p-3 bg-gray-50 rounded-xl">
+                            <div className="text-2xl font-black text-gray-900">{totalStock}</div>
+                            <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mt-0.5">Total</div>
+                        </div>
+                        <div className="text-center p-3 bg-blue-50 rounded-xl">
+                            <div className="text-2xl font-black text-blue-700">{locStockArr.reduce((s, x) => s + x.quantity, 0)}</div>
+                            <div className="text-[10px] text-blue-500 font-semibold uppercase tracking-wide mt-0.5">Warehouses</div>
+                        </div>
+                        <div className="text-center p-3 bg-emerald-50 rounded-xl">
+                            <div className="text-2xl font-black text-emerald-700">{propStockArr.reduce((s, x) => s + x.quantity, 0) + aptStockArr.reduce((s, x) => s + x.quantity, 0)}</div>
+                            <div className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wide mt-0.5">Properties</div>
+                        </div>
                     </div>
-                )}
-            />
-        </div>
-    );
-}
 
-function ApartmentInventoryTab() {
-    const { data: aptInv, isLoading } = useGetApartmentInventoryQuery({});
-
-    const columns = [
-        {
-            header: 'Apartment Unit',
-            accessorKey: 'apartment_details',
-            cell: ({ getValue }: any) => {
-                const apt = getValue();
-                return <span className="font-medium">{apt?.title || '-'}</span>;
-            },
-        },
-        {
-            header: 'Item',
-            accessorKey: 'item_details',
-            cell: ({ getValue }: any) => {
-                const item = getValue();
-                return (
-                    <div className="flex items-center gap-2">
-                        {item?.image_url && <img src={item.image_url} alt={item.name} className="h-6 w-6 rounded object-cover" />}
-                        <span>{item?.name || '-'}</span>
-                        {item?.unit && <span className="text-xs text-gray-400">/ {item.unit}</span>}
-                    </div>
-                );
-            },
-        },
-        {
-            header: 'Qty',
-            accessorKey: 'quantity',
-            cell: ({ getValue }: any) => <span className="font-mono font-medium">{getValue()}</span>,
-        },
-    ];
-
-    if (isLoading) return <div className="text-center py-10">Loading apartment inventory...</div>;
-
-    return (
-        <div>
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-800">
-                <strong>Apartment Inventory</strong> tracks consumable items stocked inside each unit — e.g. bath towels, bedsheets, toiletries. When a guest checks in, items are assigned to the apartment. Use <em>Record Movement</em> (type: Client Request) to track guest usage or restocking.
-            </div>
-            <DataTable
-                data={aptInv || []}
-                columns={columns}
-                searchPlaceholder="Search apartment inventory..."
-                actions={(row: ApartmentInventory) => (
-                    <div className="flex gap-2">
-                        <button className="p-1 hover:bg-gray-100 rounded text-blue-600" title="Edit">
-                            <Edit className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-            />
-        </div>
-    );
-}
-
-function MovementsTab() {
-    const { data: movements, isLoading } = useGetInventoryMovementsQuery({});
-
-    const columns = [
-        {
-            header: 'Date',
-            accessorKey: 'created_at',
-            cell: ({ getValue }: any) => new Date(getValue()).toLocaleString(),
-        },
-        {
-            header: 'Type',
-            accessorKey: 'movement_type_display',
-            cell: ({ getValue }: any) => (
-                <span className="text-xs font-medium uppercase bg-gray-100 px-2 py-1 rounded">{getValue()}</span>
-            ),
-        },
-        {
-            header: 'Details',
-            accessorKey: 'id',
-            cell: ({ row }: any) => (
-                <div className="text-sm">
-                    <span className="font-medium">{row.original.item_details?.name}</span>
-                    {' at '}
-                    {row.original.location_details?.name}
-                    {row.original.property_details && (
-                        <span className="text-gray-500"> → {row.original.property_details.name}</span>
+                    {/* By-location breakdown */}
+                    {locStockArr.length > 0 && (
+                        <div className="space-y-1.5">
+                            {locStockArr.map(s => (
+                                <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-gray-200 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                        <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                                        <span className="text-sm text-gray-700">{s.location_details?.name}</span>
+                                        {s.is_low_stock && <span className="text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Low</span>}
+                                    </div>
+                                    <span className="text-sm font-bold text-gray-900">{s.quantity} <span className="text-gray-400 font-normal text-xs">{item.unit}</span></span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {propStockArr.map(s => (
+                        <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-gray-200 rounded-lg mt-1.5">
+                            <div className="flex items-center gap-2">
+                                <Building2 className="h-3.5 w-3.5 text-gray-400" />
+                                <span className="text-sm text-gray-700">{s.property_details?.name}</span>
+                            </div>
+                            <span className="text-sm font-bold text-gray-900">{s.quantity} <span className="text-gray-400 font-normal text-xs">{item.unit}</span></span>
+                        </div>
+                    ))}
+                    {aptStockArr.map(s => (
+                        <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-gray-200 rounded-lg mt-1.5">
+                            <div className="flex items-center gap-2">
+                                <Home className="h-3.5 w-3.5 text-gray-400" />
+                                <span className="text-sm text-gray-700">{s.apartment_details?.title}</span>
+                            </div>
+                            <span className="text-sm font-bold text-gray-900">{s.quantity} <span className="text-gray-400 font-normal text-xs">{item.unit}</span></span>
+                        </div>
+                    ))}
+                    {totalStock === 0 && (
+                        <div className="text-center py-4 text-sm text-gray-400">No stock recorded yet.</div>
                     )}
                 </div>
-            ),
-        },
-        {
-            header: 'Qty',
-            accessorKey: 'quantity',
-            cell: ({ getValue }: any) => {
-                const qty = getValue();
-                return (
-                    <span className={`font-mono font-bold ${qty > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {qty > 0 ? `+${qty}` : qty}
-                    </span>
-                );
-            },
-        },
-        { header: 'Reason', accessorKey: 'reason' },
-        { header: 'By', accessorKey: 'performed_by' },
+
+                {/* Movement history */}
+                <div className="p-5">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Movement History</p>
+                    {movArr.length === 0 ? (
+                        <div className="text-center py-6 text-sm text-gray-400">No movements recorded.</div>
+                    ) : (
+                        <div className="space-y-2">
+                            {movArr.map(m => {
+                                const meta = MOVEMENT_LABELS[m.movement_type] ?? { label: m.movement_type_display, color: 'text-gray-700 bg-gray-50 border-gray-200', icon: Box };
+                                const Icon = meta.icon;
+                                return (
+                                    <div key={m.id} className="flex gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 border ${meta.color}`}>
+                                            <Icon className="h-3.5 w-3.5" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold text-gray-900">{meta.label}</span>
+                                                <span className="text-xs text-gray-500">×{m.quantity} {item.unit}</span>
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                                                {m.location_details?.name && <span>{m.location_details.name}</span>}
+                                                {m.property_details?.name && <><ChevronRight className="h-3 w-3" /><span>{m.property_details.name}</span></>}
+                                                {m.apartment_details?.title && <><ChevronRight className="h-3 w-3" /><span>{m.apartment_details.title}</span></>}
+                                            </div>
+                                            {m.reason && <p className="text-xs text-gray-500 mt-0.5 italic">{m.reason}</p>}
+                                            <p className="text-[10px] text-gray-300 mt-0.5">{fmtDate(m.created_at)}{m.performed_by ? ` · ${m.performed_by}` : ''}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
+export default function InventoryPage() {
+    const user = useSelector((s: RootState) => s.auth.user);
+    const allowedLocationIds: number[] = user?.role?.allowed_locations ?? [];
+    const isSuperOrNoRestriction = !allowedLocationIds.length || user?.is_superuser || user?.role?.is_superuser_role;
+
+    const [topTab,             setTopTab]             = useState<TopTab>('items');
+    const [selectedItem,       setSelectedItem]       = useState<InventoryItem | null>(null);
+    const [selectedLocation,   setSelectedLocation]   = useState<Location | null>(null);
+    const [transferItem,       setTransferItem]       = useState<InventoryItem | undefined>(undefined);
+    const [search,             setSearch]             = useState('');
+
+    const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+    const [isItemModalOpen,     setIsItemModalOpen]     = useState(false);
+    const [isStockModalOpen,    setIsStockModalOpen]    = useState(false);
+    const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
+    const [isTransferOpen,      setIsTransferOpen]      = useState(false);
+
+    // Data
+    const { data: locationsRaw,    isLoading: locLoading }   = useGetLocationsQuery({});
+    const { data: itemsRaw,        isLoading: itemsLoading } = useGetInventoryItemsQuery({});
+    const { data: allLocStock }  = useGetLocationInventoryQuery();
+    const { data: allMovements, isLoading: movLoading } = useGetInventoryMovementsQuery({});
+    const { data: locDetailStock } = useGetLocationInventoryQuery(
+        selectedLocation ? { location_id: selectedLocation.id } : undefined,
+        { skip: !selectedLocation }
+    );
+    const [deleteItem] = useDeleteInventoryItemMutation();
+    const [deleteLocation] = useDeleteLocationMutation();
+
+    // Permission-filtered locations
+    const allLocations = locationsRaw ?? [];
+    const locations = useMemo(() =>
+        isSuperOrNoRestriction ? allLocations : allLocations.filter(l => allowedLocationIds.includes(l.id)),
+        [allLocations, allowedLocationIds, isSuperOrNoRestriction]
+    );
+
+    const items = itemsRaw ?? [];
+    const movements = allMovements ?? [];
+
+    const filteredItems = useMemo(() =>
+        items.filter(it => it.name.toLowerCase().includes(search.toLowerCase())
+            || it.category.toLowerCase().includes(search.toLowerCase())),
+        [items, search]
+    );
+    const filteredLocations = useMemo(() =>
+        locations.filter(l => l.name.toLowerCase().includes(search.toLowerCase())),
+        [locations, search]
+    );
+
+    // Stock counts per item (across all locations)
+    const stockByItem = useMemo(() => {
+        const map: Record<string, number> = {};
+        (allLocStock ?? []).forEach(s => {
+            const key = s.item_details?.id?.toString() ?? s.item;
+            map[key] = (map[key] ?? 0) + s.quantity;
+        });
+        return map;
+    }, [allLocStock]);
+
+    const openTransfer = (item?: InventoryItem) => {
+        setTransferItem(item);
+        setIsTransferOpen(true);
+    };
+
+    const tabs: { key: TopTab; label: string; icon: typeof Box }[] = [
+        { key: 'items',     label: 'Items',       icon: Box },
+        { key: 'locations', label: 'Warehouses',  icon: MapPin },
+        { key: 'movements', label: 'Audit Trail', icon: BarChart3 },
     ];
 
-    if (isLoading) return <div className="text-center py-10">Loading audit trail...</div>;
-
     return (
-        <DataTable
-            data={movements || []}
-            columns={columns}
-            searchPlaceholder="Search movements..."
-        />
+        <div className="flex flex-col h-full">
+            {/* Modals */}
+            <AddLocationModal   isOpen={isLocationModalOpen}   onClose={() => setIsLocationModalOpen(false)} />
+            <AddItemModal       isOpen={isItemModalOpen}       onClose={() => setIsItemModalOpen(false)} />
+            <AddStockModal      isOpen={isStockModalOpen}      onClose={() => setIsStockModalOpen(false)} />
+            <RecordMovementModal isOpen={isMovementModalOpen}  onClose={() => setIsMovementModalOpen(false)} />
+            <TransferModal      isOpen={isTransferOpen}        onClose={() => setIsTransferOpen(false)} preItem={transferItem} />
+
+            {/* Page header */}
+            <div className="px-6 pt-6 pb-0 flex flex-col md:flex-row md:items-center gap-4 mb-5">
+                <div className="flex-1">
+                    <h1 className="text-2xl font-black tracking-tight" style={{ color: DARK }}>Inventory</h1>
+                    <p className="text-sm text-gray-500 mt-0.5">Track and manage items across all locations, properties and apartments.</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => openTransfer()}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all active:scale-95"
+                        style={{ background: DARK }}>
+                        <ArrowRightLeft className="h-4 w-4" /> Transfer
+                    </button>
+                    <button onClick={() => setIsStockModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-all">
+                        <TrendingUp className="h-4 w-4" /> Add Stock
+                    </button>
+                    <button onClick={() => setIsItemModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-all">
+                        <Plus className="h-4 w-4" /> New Item
+                    </button>
+                    <button onClick={() => setIsLocationModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-all">
+                        <MapPin className="h-4 w-4" /> New Location
+                    </button>
+                </div>
+            </div>
+
+            {/* Tab bar + search */}
+            <div className="px-6 flex items-center justify-between gap-4 mb-4 flex-wrap">
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                    {tabs.map(t => {
+                        const Icon = t.icon;
+                        return (
+                            <button key={t.key} onClick={() => { setTopTab(t.key); setSelectedItem(null); setSelectedLocation(null); setSearch(''); }}
+                                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${topTab === t.key ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                                style={topTab === t.key ? { color: DARK } : {}}>
+                                <Icon className="h-4 w-4" />{t.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+                        className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-[#403D3D]/20 focus:border-[#403D3D] outline-none w-56" />
+                </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-hidden px-6 pb-6">
+                <div className="h-full bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex">
+                    <AnimatePresence mode="wait">
+
+                        {/* ── Items tab ── */}
+                        {topTab === 'items' && !selectedItem && (
+                            <motion.div key="items-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 overflow-y-auto">
+                                {itemsLoading ? (
+                                    <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-300" /></div>
+                                ) : filteredItems.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                        <PackageOpen className="h-12 w-12 mb-3 opacity-30" />
+                                        <p className="font-medium">No items found</p>
+                                    </div>
+                                ) : (
+                                    <table className="w-full">
+                                        <thead className="sticky top-0 bg-gray-50 border-b border-gray-100 z-10">
+                                            <tr>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Item</th>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">Category</th>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">Unit</th>
+                                                <th className="text-right text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">Total Stock</th>
+                                                <th className="px-3 py-3" />
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {filteredItems.map(item => {
+                                                const total = stockByItem[item.id.toString()] ?? 0;
+                                                return (
+                                                    <tr key={item.id} className="hover:bg-gray-50 transition-colors cursor-pointer group"
+                                                        onClick={() => setSelectedItem(item)}>
+                                                        <td className="px-5 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                                                                    style={{ background: `${DARK}15` }}>
+                                                                    <Box className="h-4 w-4" style={{ color: DARK }} />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                                                                    {item.description && <p className="text-xs text-gray-400 truncate max-w-xs">{item.description}</p>}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">{item.category}</span>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-sm text-gray-500">{item.unit}</td>
+                                                        <td className="px-3 py-3 text-right">
+                                                            <span className={`text-sm font-bold ${total === 0 ? 'text-red-500' : 'text-gray-900'}`}>{total}</span>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <button onClick={e => { e.stopPropagation(); openTransfer(item); }}
+                                                                    className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+                                                                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                                                                </button>
+                                                                <button onClick={e => { e.stopPropagation(); setSelectedItem(item); }}
+                                                                    className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+                                                                    <Eye className="h-3.5 w-3.5" />
+                                                                </button>
+                                                                <button onClick={e => { e.stopPropagation(); if (confirm(`Delete "${item.name}"?`)) deleteItem(item.id).then(() => toast.success('Deleted')); }}
+                                                                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </motion.div>
+                        )}
+
+                        {/* ── Item detail panel ── */}
+                        {topTab === 'items' && selectedItem && (
+                            <motion.div key="item-detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 overflow-hidden flex flex-col">
+                                <ItemDetailPanel item={selectedItem} onClose={() => setSelectedItem(null)} onTransfer={it => { openTransfer(it); }} />
+                            </motion.div>
+                        )}
+
+                        {/* ── Locations tab ── */}
+                        {topTab === 'locations' && !selectedLocation && (
+                            <motion.div key="locations-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 overflow-y-auto p-5">
+                                {!isSuperOrNoRestriction && allowedLocationIds.length > 0 && (
+                                    <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                                        <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                                        You have access to {allowedLocationIds.length} location{allowedLocationIds.length !== 1 ? 's' : ''} based on your role.
+                                    </div>
+                                )}
+                                {locLoading ? (
+                                    <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-300" /></div>
+                                ) : filteredLocations.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                        <MapPin className="h-12 w-12 mb-3 opacity-30" />
+                                        <p className="font-medium">No warehouses found</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {filteredLocations.map(loc => (
+                                            <button key={loc.id} onClick={() => setSelectedLocation(loc)}
+                                                className="group text-left p-4 border border-gray-200 rounded-xl hover:border-[#403D3D]/40 hover:shadow-md transition-all bg-white">
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                                                        style={{ background: `${DARK}12` }}>
+                                                        <MapPin className="h-4.5 w-4.5" style={{ color: DARK }} />
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${loc.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                                                        {loc.is_active ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </div>
+                                                <p className="font-bold text-gray-900 text-sm mb-0.5">{loc.name}</p>
+                                                {loc.address && <p className="text-xs text-gray-400 truncate">{loc.address}</p>}
+                                                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                                                    <span className="text-xs text-gray-400">{loc.inventory_count ?? 0} item types</span>
+                                                    <span className="text-xs font-semibold transition-colors group-hover:text-[#403D3D] text-gray-400 flex items-center gap-1">
+                                                        View stock <ChevronRight className="h-3 w-3" />
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
+
+                        {/* ── Location detail ── */}
+                        {topTab === 'locations' && selectedLocation && (
+                            <motion.div key="loc-detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 overflow-y-auto flex flex-col">
+                                <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 flex-shrink-0">
+                                    <button onClick={() => setSelectedLocation(null)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                                        <ChevronRight className="h-4 w-4 text-gray-400 rotate-180" />
+                                    </button>
+                                    <div>
+                                        <p className="font-bold text-gray-900">{selectedLocation.name}</p>
+                                        <p className="text-xs text-gray-400">{selectedLocation.address}</p>
+                                    </div>
+                                </div>
+                                <div className="p-5">
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Current Stock</p>
+                                    {(locDetailStock ?? []).length === 0 ? (
+                                        <div className="text-center py-10 text-sm text-gray-400">No stock at this location.</div>
+                                    ) : (
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 border-b border-gray-100">
+                                                <tr>
+                                                    <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-4 py-2.5">Item</th>
+                                                    <th className="text-right text-xs font-bold text-gray-400 uppercase tracking-widest px-4 py-2.5">Qty</th>
+                                                    <th className="text-right text-xs font-bold text-gray-400 uppercase tracking-widest px-4 py-2.5">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50">
+                                                {(locDetailStock ?? []).map(s => (
+                                                    <tr key={s.id} className="hover:bg-gray-50 transition-colors cursor-pointer"
+                                                        onClick={() => { setTopTab('items'); const it = items.find(i => i.id.toString() === s.item); if (it) setSelectedItem(it); }}>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <Box className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-gray-900">{s.item_details?.name}</p>
+                                                                    <p className="text-xs text-gray-400">{s.item_details?.category} · {s.item_details?.unit}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-bold text-gray-900">{s.quantity}</td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            {s.is_low_stock ? (
+                                                                <span className="text-xs font-bold bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full">Low Stock</span>
+                                                            ) : (
+                                                                <span className="text-xs font-medium text-emerald-600">OK</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* ── Movements / Audit Trail tab ── */}
+                        {topTab === 'movements' && (
+                            <motion.div key="movements" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 overflow-y-auto">
+                                {movLoading ? (
+                                    <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-gray-300" /></div>
+                                ) : movements.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                        <Truck className="h-12 w-12 mb-3 opacity-30" /><p className="font-medium">No movements recorded</p>
+                                    </div>
+                                ) : (
+                                    <table className="w-full">
+                                        <thead className="sticky top-0 bg-gray-50 border-b border-gray-100 z-10">
+                                            <tr>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Item</th>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">Type</th>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">Path</th>
+                                                <th className="text-right text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">Qty</th>
+                                                <th className="text-left text-xs font-bold text-gray-400 uppercase tracking-widest px-3 py-3">When</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {movements.map(m => {
+                                                const meta = MOVEMENT_LABELS[m.movement_type] ?? { label: m.movement_type_display, color: 'text-gray-700 bg-gray-50 border-gray-200', icon: Box };
+                                                const Icon = meta.icon;
+                                                const path = [
+                                                    m.location_details?.name,
+                                                    m.property_details?.name,
+                                                    m.apartment_details?.title,
+                                                ].filter(Boolean);
+                                                return (
+                                                    <tr key={m.id} className="hover:bg-gray-50 transition-colors">
+                                                        <td className="px-5 py-3">
+                                                            <p className="text-sm font-semibold text-gray-900">{m.item_details?.name}</p>
+                                                            {m.reason && <p className="text-xs text-gray-400 italic truncate max-w-xs">{m.reason}</p>}
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg border ${meta.color}`}>
+                                                                <Icon className="h-3 w-3" />{meta.label}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <div className="flex items-center gap-1 text-xs text-gray-600">
+                                                                {path.map((p, i) => (
+                                                                    <span key={i} className="flex items-center gap-1">
+                                                                        {i > 0 && <ChevronRight className="h-3 w-3 text-gray-300" />}
+                                                                        {p}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right">
+                                                            <span className="text-sm font-bold text-gray-900">×{m.quantity}</span>
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <p className="text-xs text-gray-500">{fmtDate(m.created_at)}</p>
+                                                            {m.performed_by && <p className="text-xs text-gray-400">{m.performed_by}</p>}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </motion.div>
+                        )}
+
+                    </AnimatePresence>
+                </div>
+            </div>
+        </div>
     );
 }

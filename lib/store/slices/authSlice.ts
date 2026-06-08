@@ -15,7 +15,7 @@ export interface User {
     is_superuser: boolean;
     must_change_password?: boolean;
     permissions?: string[];
-    role?: { id: string; name: string; is_superuser_role?: boolean } | null;
+    role?: { id: string; name: string; is_superuser_role?: boolean; allowed_locations?: number[] } | null;
 }
 
 export function hasPermission(user: User | null, permission: string): boolean {

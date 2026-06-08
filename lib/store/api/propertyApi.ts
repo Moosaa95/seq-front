@@ -37,10 +37,13 @@ export interface ApiApartment {
     bedrooms: number;
     bathrooms: number;
     living_rooms: number;
-    garages?: number;
+    parking?: number;
+    is_locked?: boolean;
+    lock_reason?: string | null;
     units?: number;
     description: string;
     amenities: string[] | string;
+    house_rules?: string;
     entity?: string;
     agent: {
         id: number;

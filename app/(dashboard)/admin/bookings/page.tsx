@@ -17,16 +17,25 @@ import {
   RefreshCw,
   Plus,
   LayoutGrid,
-  List
+  List,
+  Lock,
+  Unlock,
+  Wrench,
+  X,
 } from 'lucide-react';
 import AdminBookingModal from '@/components/admin/AdminBookingModal';
 import CancellationModal from '@/components/admin/bookings/CancellationModal';
 import BookingsCalendar from '@/components/admin/BookingsCalendar';
-import { useGetBookingsQuery, useUpdateBookingStatusMutation } from '@/lib/store/api/adminApi';
+import RaiseDisputeModal from '@/components/admin/RaiseDisputeModal';
+import ReceiptModal from '@/components/admin/ReceiptModal';
+import type { ApiBooking } from '@/lib/store/api/adminApi';
+import { useGetBookingsQuery, useUpdateBookingStatusMutation, useLockApartmentMutation, useUnlockApartmentMutation } from '@/lib/store/api/adminApi';
 import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
+import { useGetBlockedDatesQuery, useCreateBlockedDateMutation, useDeleteBlockedDateMutation } from '@/lib/store/api/calendarApi';
+import { format as dateFnsFormat } from 'date-fns';
 import { toast } from 'sonner';
 
-type ViewMode = 'calendar' | 'list';
+type ViewMode = 'calendar' | 'list' | 'rooms';
 
 export default function BookingsManagement() {
   // View mode state with localStorage persistence
@@ -36,6 +45,10 @@ export default function BookingsManagement() {
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isCancellationModalOpen, setIsCancellationModalOpen] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [walkInApartment, setWalkInApartment] = useState<any>(null);
+  const [walkInCheckIn, setWalkInCheckIn] = useState<string | undefined>(undefined);
+  const [disputeBooking, setDisputeBooking] = useState<ApiBooking | null>(null);
+  const [receiptBooking, setReceiptBooking] = useState<ApiBooking | null>(null);
 
   // Load view preference from localStorage on mount
   useEffect(() => {
@@ -54,10 +67,30 @@ export default function BookingsManagement() {
   // RTK Query hooks
   const { data: bookingsData, isLoading, error, refetch } = useGetBookingsQuery({ page_size: 100 });
   const { data: apartmentsData } = useGetApartmentsQuery({ page_size: 200 });
+  const { data: blockedDatesData } = useGetBlockedDatesQuery();
   const [updateBookingStatus] = useUpdateBookingStatusMutation();
+  const [lockApartment] = useLockApartmentMutation();
+  const [unlockApartment] = useUnlockApartmentMutation();
+  const [createBlockedDate] = useCreateBlockedDateMutation();
+  const [deleteBlockedDate] = useDeleteBlockedDateMutation();
+
+  // Permanent lock state
+  const [lockingId, setLockingId] = useState<string | null>(null);
+
+  // Date-range block modal state
+  const [blockModalAptId, setBlockModalAptId] = useState<string | null>(null);
+  const [blockStartDate, setBlockStartDate] = useState('');
+  const [blockEndDate, setBlockEndDate] = useState('');
+  const [blockReason, setBlockReason] = useState('');
+  const [isBlocking, setIsBlocking] = useState(false);
+
+  // Legacy lock modal (kept for permanent locks)
+  const [lockReason, setLockReason] = useState('');
+  const [lockModalAptId, setLockModalAptId] = useState<string | null>(null);
 
   const bookings = bookingsData?.results || [];
   const apartments = apartmentsData?.results || [];
+  const blockedDates = blockedDatesData?.results || [];
 
   const handleStatusUpdate = async (
     bookingId: string,
@@ -75,6 +108,67 @@ export default function BookingsManagement() {
   const handleRefresh = () => {
     refetch();
     toast.success('Bookings refreshed');
+  };
+
+  const handleLock = async (aptId: string, reason: string) => {
+    setLockingId(aptId);
+    try {
+      await lockApartment({ id: aptId, reason }).unwrap();
+      toast.success('Room locked for maintenance.');
+      setLockModalAptId(null);
+      setLockReason('');
+    } catch {
+      toast.error('Failed to lock room.');
+    } finally {
+      setLockingId(null);
+    }
+  };
+
+  const handleUnlock = async (aptId: string) => {
+    setLockingId(aptId);
+    try {
+      await unlockApartment(aptId).unwrap();
+      toast.success('Room unlocked — now available for booking.');
+    } catch {
+      toast.error('Failed to unlock room.');
+    } finally {
+      setLockingId(null);
+    }
+  };
+
+  const handleBlockDates = async () => {
+    if (!blockModalAptId || !blockStartDate || !blockEndDate) return;
+    if (blockEndDate <= blockStartDate) {
+      toast.error('End date must be after start date.');
+      return;
+    }
+    setIsBlocking(true);
+    try {
+      await createBlockedDate({
+        apartment_id: blockModalAptId,
+        start_date: blockStartDate,
+        end_date: blockEndDate,
+        notes: blockReason || undefined,
+      }).unwrap();
+      toast.success('Dates blocked — guests cannot book during this period.');
+      setBlockModalAptId(null);
+      setBlockStartDate('');
+      setBlockEndDate('');
+      setBlockReason('');
+    } catch {
+      toast.error('Failed to block dates.');
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
+  const handleRemoveBlock = async (blockId: string) => {
+    try {
+      await deleteBlockedDate(blockId).unwrap();
+      toast.success('Date block removed.');
+    } catch {
+      toast.error('Failed to remove block.');
+    }
   };
 
   const filteredBookings = bookings.filter((booking) => {
@@ -126,18 +220,19 @@ export default function BookingsManagement() {
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Bookings</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: '#403D3D' }}>Bookings</h1>
           <p className="text-gray-600 mt-1">View and manage all property bookings</p>
         </div>
         <div className="flex items-center gap-3">
           {/* View Toggle */}
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex rounded-lg p-1" style={{ backgroundColor: '#403D3D20' }}>
             <button
               onClick={() => handleViewModeChange('calendar')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'calendar'
-                ? 'bg-white text-emerald-700 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white shadow-sm'
+                : 'hover:bg-white/50'
                 }`}
+              style={{ color: viewMode === 'calendar' ? '#403D3D' : '#403D3D99' }}
             >
               <LayoutGrid className="h-4 w-4" />
               Calendar
@@ -145,12 +240,24 @@ export default function BookingsManagement() {
             <button
               onClick={() => handleViewModeChange('list')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'list'
-                ? 'bg-white text-emerald-700 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white shadow-sm'
+                : 'hover:bg-white/50'
                 }`}
+              style={{ color: viewMode === 'list' ? '#403D3D' : '#403D3D99' }}
             >
               <List className="h-4 w-4" />
               List
+            </button>
+            <button
+              onClick={() => handleViewModeChange('rooms')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'rooms'
+                ? 'bg-white shadow-sm'
+                : 'hover:bg-white/50'
+                }`}
+              style={{ color: viewMode === 'rooms' ? '#403D3D' : '#403D3D99' }}
+            >
+              <Wrench className="h-4 w-4" />
+              Rooms
             </button>
           </div>
 
@@ -218,8 +325,107 @@ export default function BookingsManagement() {
         <BookingsCalendar
           bookings={filteredBookings}
           apartments={apartments}
+          blockedDates={blockedDates}
           onStatusChange={handleStatusUpdate}
+          onWalkInBook={(apt, date) => {
+            setWalkInApartment(apt);
+            setWalkInCheckIn(date);
+            setIsBookingModalOpen(true);
+          }}
+          onRaiseDispute={setDisputeBooking}
+          onPrintReceipt={setReceiptBooking}
         />
+      ) : viewMode === 'rooms' ? (
+        /* Rooms / Block-Dates View */
+        <div>
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">
+              <Lock className="h-4 w-4 flex-shrink-0" />
+              Block specific date ranges per room — guests cannot book during blocked periods. Use "Permanent Lock" for long-term maintenance.
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {apartments.map((apt) => {
+              const aptBlocks = blockedDates.filter(bd => bd.apartment === apt.id && !bd.external_calendar);
+              return (
+                <div key={apt.id} className={`bg-white rounded-xl border p-4 shadow-sm flex flex-col gap-3 ${apt.is_locked ? 'border-red-300 bg-red-50/20' : 'border-gray-200'}`}>
+                  {/* Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: '#403D3D' }}>{apt.title}</p>
+                      <p className="text-xs text-gray-400 truncate">{apt.property_details?.name}</p>
+                    </div>
+                    {apt.is_locked ? (
+                      <span className="flex items-center gap-1 text-[10px] font-bold bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full ml-2 flex-shrink-0">
+                        <Lock className="h-2.5 w-2.5" /> Permanently Locked
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full ml-2 flex-shrink-0">Active</span>
+                    )}
+                  </div>
+
+                  {/* Permanent lock reason */}
+                  {apt.is_locked && apt.lock_reason && (
+                    <p className="text-xs text-red-600 italic bg-red-50 rounded-lg px-2 py-1 border border-red-100">{apt.lock_reason}</p>
+                  )}
+
+                  {/* Existing date-range blocks */}
+                  {aptBlocks.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Blocked Periods</p>
+                      {aptBlocks.map(bd => (
+                        <div key={bd.id} className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-orange-800">
+                              {dateFnsFormat(new Date(bd.start_date + 'T00:00:00'), 'MMM d')} – {dateFnsFormat(new Date(bd.end_date + 'T00:00:00'), 'MMM d, yyyy')}
+                            </p>
+                            {bd.notes && <p className="text-[10px] text-orange-600 truncate">{bd.notes}</p>}
+                          </div>
+                          <button
+                            onClick={() => handleRemoveBlock(bd.id)}
+                            className="p-1 rounded hover:bg-orange-100 text-orange-500 flex-shrink-0"
+                            title="Remove this block"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 mt-auto pt-1">
+                    <button
+                      onClick={() => { setBlockModalAptId(apt.id.toString()); setBlockStartDate(''); setBlockEndDate(''); setBlockReason(''); }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      Block Dates
+                    </button>
+                    {apt.is_locked ? (
+                      <button
+                        onClick={() => handleUnlock(apt.id.toString())}
+                        disabled={lockingId === apt.id.toString()}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                      >
+                        <Unlock className="h-3.5 w-3.5" />
+                        {lockingId === apt.id.toString() ? 'Unlocking…' : 'Unlock'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setLockModalAptId(apt.id.toString()); setLockReason(''); }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 border border-red-200 text-red-700 hover:bg-red-50 rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        <Lock className="h-3.5 w-3.5" />
+                        Perm. Lock
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : filteredBookings.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
           <Calendar className="h-16 w-16 mx-auto text-gray-400 mb-4" />
@@ -242,7 +448,7 @@ export default function BookingsManagement() {
                 <div className="lg:col-span-2">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-1">
+                      <h3 className="text-lg font-bold mb-1" style={{ color: '#403D3D' }}>
                         {booking.apartment_details?.title ?? '—'}
                       </h3>
                       <div className="flex items-center text-gray-600 text-sm">
@@ -265,7 +471,7 @@ export default function BookingsManagement() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                     <div className="flex items-center text-sm">
                       <User className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="text-gray-900">{booking.name}</span>
+                      <span style={{ color: '#403D3D' }}>{booking.name}</span>
                     </div>
                     <div className="flex items-center text-sm">
                       <Mail className="h-4 w-4 text-gray-400 mr-2" />
@@ -341,21 +547,150 @@ export default function BookingsManagement() {
                   <XCircle className="h-4 w-4 inline mr-1" />
                   Cancel
                 </button>
+                <button
+                  onClick={() => setReceiptBooking(booking)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                >
+                  Receipt
+                </button>
+                <button
+                  onClick={() => setDisputeBooking(booking)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
+                >
+                  Raise Dispute
+                </button>
               </div>
             </motion.div>
           ))}
         </div>
       )}
 
+      {/* Block dates modal */}
+      {blockModalAptId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Lock className="h-5 w-5 text-amber-600" />
+                <h3 className="font-bold text-gray-900">Block Dates</h3>
+              </div>
+              <button onClick={() => setBlockModalAptId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4 text-gray-400" /></button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Guests will not be able to book this room during the selected period.</p>
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Start Date *</label>
+                <input
+                  type="date"
+                  value={blockStartDate}
+                  onChange={e => setBlockStartDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">End Date *</label>
+                <input
+                  type="date"
+                  value={blockEndDate}
+                  onChange={e => setBlockEndDate(e.target.value)}
+                  min={blockStartDate || new Date().toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Reason (optional)</label>
+                <input
+                  type="text"
+                  value={blockReason}
+                  onChange={e => setBlockReason(e.target.value)}
+                  placeholder="e.g. Repairs, Pest control, Deep cleaning…"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setBlockModalAptId(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={handleBlockDates}
+                disabled={isBlocking || !blockStartDate || !blockEndDate}
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {isBlocking ? 'Blocking…' : 'Block Dates'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lock reason dialog */}
+      {lockModalAptId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Lock className="h-5 w-5 text-red-600" />
+                <h3 className="font-bold text-gray-900">Lock Room</h3>
+              </div>
+              <button onClick={() => setLockModalAptId(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="h-4 w-4 text-gray-400" /></button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Provide a reason for locking this room (e.g., "Under repair", "Pest control").</p>
+            <textarea
+              value={lockReason}
+              onChange={e => setLockReason(e.target.value)}
+              placeholder="Reason for locking…"
+              rows={3}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500/30 focus:border-red-400 outline-none resize-none mb-4"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setLockModalAptId(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={() => handleLock(lockModalAptId, lockReason)}
+                disabled={lockingId === lockModalAptId}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {lockingId === lockModalAptId ? 'Locking…' : 'Confirm Lock'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Admin Booking Modal */}
       <AdminBookingModal
         isOpen={isBookingModalOpen}
-        onClose={() => setIsBookingModalOpen(false)}
+        onClose={() => {
+          setIsBookingModalOpen(false);
+          setWalkInApartment(null);
+          setWalkInCheckIn(undefined);
+        }}
         onSuccess={() => {
           refetch();
           setIsBookingModalOpen(false);
+          setWalkInApartment(null);
+          setWalkInCheckIn(undefined);
         }}
+        initialApartment={walkInApartment}
+        initialCheckIn={walkInCheckIn}
       />
+
+      {/* Raise Dispute Modal */}
+      {disputeBooking && (
+        <RaiseDisputeModal
+          isOpen={!!disputeBooking}
+          onClose={() => setDisputeBooking(null)}
+          booking={disputeBooking}
+        />
+      )}
+
+      {/* Receipt Modal */}
+      {receiptBooking && (
+        <ReceiptModal
+          isOpen={!!receiptBooking}
+          onClose={() => setReceiptBooking(null)}
+          booking={receiptBooking}
+        />
+      )}
 
       {/* Cancellation Modal */}
       {selectedBookingId && (

@@ -133,6 +133,7 @@ export const apiSlice = createApi({
         'ContactInquiry',
         'PropertyInquiry',
         'ExternalCalendar',
+        'BlockedDate',
         'Location',
         'InventoryItem',
         'LocationInventory',

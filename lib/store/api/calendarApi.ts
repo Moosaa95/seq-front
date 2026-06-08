@@ -17,6 +17,19 @@ export interface ExternalCalendar {
     updated_at: string;
 }
 
+export interface BlockedDate {
+    id: string;
+    apartment: string;
+    start_date: string;
+    end_date: string;
+    notes: string | null;
+    source_booking_id: string | null;
+    external_calendar: string | null;
+    external_calendar_details: ExternalCalendar | null;
+    created_at: string;
+    updated_at: string;
+}
+
 export interface CreateExternalCalendarData {
     apartment_id: string;
     source: CalendarSource;
@@ -24,11 +37,37 @@ export interface CreateExternalCalendarData {
     is_active?: boolean;
 }
 
+export interface CreateBlockedDateInput {
+    apartment_id: string;
+    start_date: string;
+    end_date: string;
+    notes?: string;
+}
+
 export const calendarApi = apiSlice.injectEndpoints({
     endpoints: (builder) => ({
         getExternalCalendars: builder.query<ApiPaginatedResponse<ExternalCalendar>, string>({
             query: (apartmentId) => `/external-calendars/?apartment=${apartmentId}`,
             providesTags: ['ExternalCalendar'],
+        }),
+        getBlockedDates: builder.query<ApiPaginatedResponse<BlockedDate>, void>({
+            query: () => `/blocked-dates/?page_size=1000`,
+            providesTags: ['BlockedDate'],
+        }),
+        createBlockedDate: builder.mutation<BlockedDate, CreateBlockedDateInput>({
+            query: (data) => ({
+                url: '/blocked-dates/',
+                method: 'POST',
+                body: data,
+            }),
+            invalidatesTags: ['BlockedDate'],
+        }),
+        deleteBlockedDate: builder.mutation<void, string>({
+            query: (id) => ({
+                url: `/blocked-dates/${id}/`,
+                method: 'DELETE',
+            }),
+            invalidatesTags: ['BlockedDate'],
         }),
         createExternalCalendar: builder.mutation<ExternalCalendar, CreateExternalCalendarData>({
             query: (data) => ({
@@ -56,13 +95,16 @@ export const calendarApi = apiSlice.injectEndpoints({
                 url: `/external-calendars/${id}/sync/`,
                 method: 'POST',
             }),
-            invalidatesTags: ['ExternalCalendar'],
+            invalidatesTags: ['ExternalCalendar', 'BlockedDate'],
         }),
     }),
 });
 
 export const {
     useGetExternalCalendarsQuery,
+    useGetBlockedDatesQuery,
+    useCreateBlockedDateMutation,
+    useDeleteBlockedDateMutation,
     useCreateExternalCalendarMutation,
     useDeleteExternalCalendarMutation,
     useSyncExternalCalendarMutation,

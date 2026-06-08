@@ -281,10 +281,10 @@ export default function ApartmentDetailClient({ apartmentId }: { apartmentId: st
                     <span className="font-semibold text-gray-900 text-sm sm:text-base">{apartment.units}</span>
                   </div>
                 )}
-                {apartment.garages && (
+                {apartment.parking && (
                   <div className="bg-gray-50 px-3 sm:px-4 py-2 rounded-lg">
-                    <span className="text-xs sm:text-sm text-gray-600">Garages: </span>
-                    <span className="font-semibold text-gray-900 text-sm sm:text-base">{apartment.garages}</span>
+                    <span className="text-xs sm:text-sm text-gray-600">Parking: </span>
+                    <span className="font-semibold text-gray-900 text-sm sm:text-base">{apartment.parking}</span>
                   </div>
                 )}
               </div>
