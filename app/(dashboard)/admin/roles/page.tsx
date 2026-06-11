@@ -25,6 +25,7 @@ import {
     ApiUserRole,
 } from '@/lib/store/api/adminApi';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/parseApiError';
 
 interface RoleFormData {
     name: string;
@@ -99,7 +100,7 @@ export default function RolesPage() {
             setShowModal(false);
         } catch (err: any) {
             console.error('Error saving role:', err);
-            toast.error(err?.data?.detail || err?.data?.message || 'Failed to save role');
+            toast.error(parseApiError(err, 'Failed to save role'));
         }
     };
 
@@ -110,7 +111,7 @@ export default function RolesPage() {
                 toast.success('Role deleted successfully');
             } catch (err: any) {
                 console.error('Error deleting role:', err);
-                toast.error(err?.data?.detail || err?.data?.message || 'Failed to delete role');
+                toast.error(parseApiError(err, 'Failed to delete role'));
             }
         }
     };

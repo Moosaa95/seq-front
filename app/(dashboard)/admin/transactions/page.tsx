@@ -89,14 +89,15 @@ export default function TransactionsManagement() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            title="Refresh"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
           >
             <RefreshCw className="h-4 w-4" />
-            Refresh
+            <span className="hidden sm:inline text-sm">Refresh</span>
           </button>
-          <button className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
-            <Download className="h-5 w-5" />
-            Export
+          <button className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm text-sm font-medium">
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export</span>
           </button>
         </div>
       </div>
@@ -164,7 +165,7 @@ export default function TransactionsManagement() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white min-w-[200px]"
+            className="w-full sm:w-auto pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white sm:min-w-[180px]"
           >
             <option value="all">All Status</option>
             <option value="successful">Successful</option>

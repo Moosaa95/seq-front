@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useGetApartmentQuery, useDeleteApartmentMutation } from '@/lib/store/api/propertyApi';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/parseApiError';
 import CalendarSyncCard from '@/components/admin/CalendarSyncCard';
 
 export default function AdminPropertyDetail() {
@@ -54,7 +55,7 @@ export default function AdminPropertyDetail() {
         router.push('/admin/properties');
       } catch (error: any) {
         console.error('Error deleting property:', error);
-        toast.error(error?.data?.detail || error?.data?.message || 'Failed to delete property', { id: toastId });
+        toast.error(parseApiError(error, 'Failed to delete property'), { id: toastId });
       }
     }
   };

@@ -36,6 +36,7 @@ import AddLocationModal from '@/components/admin/inventory/AddLocationModal';
 import AddItemModal from '@/components/admin/inventory/AddItemModal';
 import AddStockModal from '@/components/admin/inventory/AddStockModal';
 import RecordMovementModal from '@/components/admin/inventory/RecordMovementModal';
+import { parseApiError } from '@/lib/parseApiError';
 
 // ─── Color tokens ──────────────────────────────────────────────────────────────
 const DARK = '#403D3D';
@@ -68,7 +69,7 @@ function TransferModal({ isOpen, onClose, preItem }: TransferModalProps) {
     const [transfer, { isLoading }] = useTransferInventoryMutation();
     const { data: locationsRaw } = useGetLocationsQuery({});
     const { data: propertiesRaw } = useGetPropertiesQuery({});
-    const { data: apartmentsRaw } = useGetApartmentsQuery({ page_size: 200 });
+    const { data: apartmentsRaw } = useGetApartmentsQuery({ page_size: 200, ordering: "title" });
     const { data: allItems } = useGetInventoryItemsQuery({});
 
     const locations = locationsRaw ?? [];
@@ -107,7 +108,7 @@ function TransferModal({ isOpen, onClose, preItem }: TransferModalProps) {
             toast.success('Transfer recorded successfully.');
             onClose();
         } catch (err: any) {
-            toast.error(err?.data?.detail ?? 'Transfer failed.');
+            toast.error(parseApiError(err, 'Transfer failed.'));
         }
     };
 

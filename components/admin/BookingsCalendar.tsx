@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
     format,
     startOfMonth,
@@ -32,9 +32,7 @@ interface BookingsCalendarProps {
     onPrintReceipt?: (booking: ApiBooking) => void;
 }
 
-const CELL_W = 44;
-const ROW_H = 44;
-const SIDEBAR_W = 220;
+const ROW_H = 40;
 
 const STATUS_STYLES: Record<string, { bar: string; text: string }> = {
     confirmed: { bar: 'bg-emerald-500', text: 'text-white' },
@@ -47,6 +45,19 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedBooking, setSelectedBooking] = useState<ApiBooking | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Responsive dimensions
+    const [windowWidth, setWindowWidth] = useState(0);
+    useEffect(() => {
+        const update = () => setWindowWidth(window.innerWidth);
+        update();
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, []);
+    const isMobile = windowWidth > 0 && windowWidth < 640;
+    const isTablet = windowWidth >= 640 && windowWidth < 1024;
+    const CELL_W   = isMobile ? 28 : isTablet ? 34 : 42;
+    const SIDEBAR_W = isMobile ? 100 : isTablet ? 150 : 200;
 
     const days = useMemo(() => {
         return eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
@@ -180,19 +191,21 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                     {/* Header: day numbers */}
                     <div className="flex sticky top-0 z-20 border-b border-gray-200" style={{ background: '#fff' }}>
                         <div
-                            className="flex-shrink-0 sticky left-0 z-30 border-r border-gray-200 flex items-center px-3"
-                            style={{ width: SIDEBAR_W, height: 40, backgroundColor: DARK }}
+                            className="flex-shrink-0 sticky left-0 z-30 border-r border-gray-200 flex items-center px-2"
+                            style={{ width: SIDEBAR_W, height: 36, backgroundColor: DARK }}
                         >
-                            <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Property / Unit</span>
+                            <span className="text-[10px] sm:text-xs font-semibold text-white/70 uppercase tracking-wider truncate">
+                                {isMobile ? 'Unit' : 'Property / Unit'}
+                            </span>
                         </div>
                         {days.map(day => {
                             const todayCell = isToday(day);
                             return (
                                 <div
                                     key={day.toISOString()}
-                                    className={`flex-shrink-0 flex flex-col items-center justify-center border-r border-gray-100 text-xs font-medium
+                                    className={`flex-shrink-0 flex flex-col items-center justify-center border-r border-gray-100 font-medium
                                         ${todayCell ? 'bg-emerald-50 text-emerald-700' : 'text-gray-500'}`}
-                                    style={{ width: CELL_W, height: 40 }}
+                                    style={{ width: CELL_W, height: 36, fontSize: isMobile ? 9 : 11 }}
                                 >
                                     <span className="leading-none">{format(day, 'EEE').charAt(0)}</span>
                                     <span className={`leading-none mt-0.5 font-bold ${todayCell ? 'text-emerald-700' : ''}`}
@@ -210,13 +223,13 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                             {/* Property header */}
                             <div className="flex border-b border-gray-200" style={{ backgroundColor: `${DARK}12` }}>
                                 <div
-                                    className="flex-shrink-0 sticky left-0 z-10 border-r border-gray-200 flex items-center px-3 gap-2"
-                                    style={{ width: SIDEBAR_W, height: 32, backgroundColor: `${DARK}12` }}
+                                    className="flex-shrink-0 sticky left-0 z-10 border-r border-gray-200 flex items-center px-2 gap-1"
+                                    style={{ width: SIDEBAR_W, height: 28, backgroundColor: `${DARK}12` }}
                                 >
-                                    <span className="text-xs font-bold truncate" style={{ color: DARK }}>{group.propertyName}</span>
-                                    <span className="text-xs text-gray-400">({group.apts.length})</span>
+                                    <span className="font-bold truncate flex-1 min-w-0" style={{ color: DARK, fontSize: isMobile ? 9 : 11 }}>{group.propertyName}</span>
+                                    <span className="text-gray-400 flex-shrink-0" style={{ fontSize: isMobile ? 9 : 11 }}>({group.apts.length})</span>
                                 </div>
-                                <div style={{ width: totalDays * CELL_W, height: 32, backgroundColor: `${DARK}08` }} />
+                                <div style={{ width: totalDays * CELL_W, height: 28, backgroundColor: `${DARK}08` }} />
                             </div>
 
                             {/* Apartment rows */}
@@ -234,13 +247,13 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                                     >
                                         {/* Apartment label */}
                                         <div
-                                            className={`flex-shrink-0 sticky left-0 z-10 border-r border-gray-200 flex items-center px-3 gap-2
+                                            className={`flex-shrink-0 sticky left-0 z-10 border-r border-gray-200 flex items-center px-2 gap-1.5
                                                 ${aptIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
                                             style={{ width: SIDEBAR_W }}
                                         >
                                             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${apt.is_locked ? 'bg-red-400' : 'bg-emerald-400'}`} />
-                                            <span className="text-xs truncate" style={{ color: DARK }}>{apt.title}</span>
-                                            {apt.is_locked && <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1 rounded ml-auto flex-shrink-0">LOCKED</span>}
+                                            <span className="truncate flex-1 min-w-0" style={{ color: DARK, fontSize: isMobile ? 9 : 11 }}>{apt.title}</span>
+                                            {apt.is_locked && !isMobile && <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1 rounded ml-auto flex-shrink-0">LOCK</span>}
                                         </div>
 
                                         {/* Day cells + booking bars */}
@@ -301,18 +314,20 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                                                     <button
                                                         key={booking.booking_id}
                                                         onClick={(e) => { e.stopPropagation(); setSelectedBooking(booking); }}
-                                                        className={`absolute top-2 flex items-center px-2 gap-1 hover:brightness-90 transition-all shadow-sm z-10 ${style.bar} ${style.text} ${roundedL} ${roundedR}`}
+                                                        className={`absolute flex items-center px-1.5 gap-1 hover:brightness-90 transition-all shadow-sm z-10 ${style.bar} ${style.text} ${roundedL} ${roundedR}`}
                                                         style={{
+                                                            top:    4,
                                                             left:   geo.left + 1,
                                                             width:  geo.width,
-                                                            height: ROW_H - 16,
+                                                            height: ROW_H - 10,
                                                             borderLeft: geo.clippedLeft ? '3px dashed rgba(255,255,255,0.5)' : undefined,
+                                                            fontSize: isMobile ? 8 : 11,
                                                         }}
                                                         title={`${booking.name} · ${booking.check_in} → ${booking.check_out}`}
                                                     >
-                                                        <span className="text-xs font-medium truncate">{booking.name}</span>
-                                                        {geo.width > 80 && (
-                                                            <span className="text-xs opacity-75 truncate ml-auto">
+                                                        <span className="font-medium truncate">{isMobile ? booking.name.split(' ')[0] : booking.name}</span>
+                                                        {geo.width > (isMobile ? 50 : 80) && (
+                                                            <span className="opacity-75 truncate ml-auto">
                                                                 {booking.nights}n
                                                             </span>
                                                         )}
@@ -335,19 +350,20 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                                                 return (
                                                     <div
                                                         key={bd.id}
-                                                        className="absolute top-2 flex items-center px-2 gap-1 rounded z-10 pointer-events-none select-none overflow-hidden"
+                                                        className="absolute flex items-center px-1.5 gap-1 rounded z-10 pointer-events-none select-none overflow-hidden"
                                                         style={{
+                                                            top: 4,
                                                             left: geo.left + 1,
                                                             width: geo.width,
-                                                            height: ROW_H - 16,
+                                                            height: ROW_H - 10,
                                                             backgroundColor: bgColor,
                                                             border: `1px solid ${borderColor}`,
                                                             backgroundImage: `repeating-linear-gradient(45deg, ${stripe1} 0, ${stripe1} 4px, ${stripe2} 4px, ${stripe2} 10px)`,
                                                         }}
                                                         title={`${source} · ${bd.start_date} → ${bd.end_date}${bd.notes ? ` · ${bd.notes}` : ''}`}
                                                     >
-                                                        <span className="text-[10px] font-bold truncate" style={{ color: labelColor }}>
-                                                            {isExternal ? '[iCal] ' : '[Block] '}{source}
+                                                        <span className="font-bold truncate" style={{ color: labelColor, fontSize: isMobile ? 8 : 10 }}>
+                                                            {isMobile ? source : (isExternal ? '[iCal] ' : '[Block] ') + source}
                                                         </span>
                                                     </div>
                                                 );

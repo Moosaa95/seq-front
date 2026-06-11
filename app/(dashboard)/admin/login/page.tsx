@@ -6,6 +6,7 @@ import { Lock, Mail } from 'lucide-react';
 import { useLoginMutation } from '@/lib/store/api/authApi';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/parseApiError';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export default function AdminLogin() {
       }
     } catch (error: any) {
       console.error('Login error:', error?.status, error?.data);
-      toast.error(error?.data?.detail || error?.data?.message || 'Invalid email or password');
+      toast.error(parseApiError(error, 'Invalid email or password'));
     }
   };
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Building2, Plus, Edit, Trash2, Eye, MapPin, Building } from 'lucide-react';
 import { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/parseApiError';
 import { DataTable } from '@/components/admin/DataTable';
 import {
   useGetApartmentsQuery,
@@ -23,7 +24,7 @@ export default function PropertiesManagement() {
     data: apartmentsData,
     isLoading: apartmentsLoading,
     error: apartmentsError
-  } = useGetApartmentsQuery({ page_size: 1000 });
+  } = useGetApartmentsQuery({ page_size: 1000, ordering: 'title' });
 
   const {
     data: propertiesData,
@@ -43,7 +44,7 @@ export default function PropertiesManagement() {
         await deleteApartment(id).unwrap();
         toast.success('Unit deleted successfully!');
       } catch (error: any) {
-        toast.error(error?.data?.detail || 'Failed to delete unit');
+        toast.error(parseApiError(error, 'Failed to delete unit'));
       }
     }
   };
@@ -54,7 +55,7 @@ export default function PropertiesManagement() {
         await deleteProperty(id).unwrap();
         toast.success('Building deleted successfully!');
       } catch (error: any) {
-        toast.error(error?.data?.detail || 'Failed to delete building');
+        toast.error(parseApiError(error, 'Failed to delete building'));
       }
     }
   };
@@ -206,33 +207,33 @@ export default function PropertiesManagement() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Property Management</h1>
           <p className="text-gray-600 mt-1">Manage buildings and individual bookable units</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Link href="/admin/properties/new-building">
-            <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+            <button className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium">
               <Plus className="h-4 w-4" />
-              Add Building
+              <span className="hidden sm:inline">Add </span>Building
             </button>
           </Link>
           <Link href="/admin/properties/new">
-            <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
+            <button className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm text-sm font-medium">
               <Plus className="h-4 w-4" />
-              Add Unit
+              <span className="hidden sm:inline">Add </span>Unit
             </button>
           </Link>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-6 sticky top-0 bg-white z-10">
+      <div className="flex border-b border-gray-200 mb-6 overflow-x-auto scrollbar-none sticky top-0 bg-white z-10">
         <button
           onClick={() => setActiveTab('units')}
-          className={`py-3 px-6 text-sm font-medium transition-colors border-b-2 ${activeTab === 'units' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`shrink-0 py-3 px-4 sm:px-6 text-xs sm:text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab === 'units' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           Units / Apartments ({apartments.length})
         </button>
         <button
           onClick={() => setActiveTab('buildings')}
-          className={`py-3 px-6 text-sm font-medium transition-colors border-b-2 ${activeTab === 'buildings' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`shrink-0 py-3 px-4 sm:px-6 text-xs sm:text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab === 'buildings' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           Buildings / Properties ({buildings.length})
         </button>

@@ -28,6 +28,7 @@ import {
     ApiUserRole,
 } from '@/lib/store/api/adminApi';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/parseApiError';
 
 interface UserFormData {
     email: string;
@@ -142,7 +143,7 @@ export default function UsersPage() {
             setShowModal(false);
         } catch (err: any) {
             console.error('Error saving user:', err);
-            toast.error(err?.data?.detail || err?.data?.message || 'Failed to save user');
+            toast.error(parseApiError(err, 'Failed to save user'));
         }
     };
 
@@ -153,7 +154,7 @@ export default function UsersPage() {
                 toast.success('User deactivated successfully');
             } catch (err: any) {
                 console.error('Error deleting user:', err);
-                toast.error(err?.data?.detail || err?.data?.message || 'Failed to deactivate user');
+                toast.error(parseApiError(err, 'Failed to deactivate user'));
             }
         }
     };

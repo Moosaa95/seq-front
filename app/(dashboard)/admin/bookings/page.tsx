@@ -66,7 +66,7 @@ export default function BookingsManagement() {
 
   // RTK Query hooks
   const { data: bookingsData, isLoading, error, refetch } = useGetBookingsQuery({ page_size: 100 });
-  const { data: apartmentsData } = useGetApartmentsQuery({ page_size: 200 });
+  const { data: apartmentsData } = useGetApartmentsQuery({ page_size: 200, ordering: "title" });
   const { data: blockedDatesData } = useGetBlockedDatesQuery();
   const [updateBookingStatus] = useUpdateBookingStatusMutation();
   const [lockApartment] = useLockApartmentMutation();
@@ -218,62 +218,57 @@ export default function BookingsManagement() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: '#403D3D' }}>Bookings</h1>
-          <p className="text-gray-600 mt-1">View and manage all property bookings</p>
+          <h1 className="text-2xl font-bold" style={{ color: '#403D3D' }}>Bookings</h1>
+          <p className="text-gray-500 text-sm mt-0.5">View and manage all property bookings</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* View Toggle */}
-          <div className="flex rounded-lg p-1" style={{ backgroundColor: '#403D3D20' }}>
+          <div className="flex rounded-lg p-1 flex-shrink-0" style={{ backgroundColor: '#403D3D20' }}>
             <button
               onClick={() => handleViewModeChange('calendar')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'calendar'
-                ? 'bg-white shadow-sm'
-                : 'hover:bg-white/50'
-                }`}
+              title="Calendar view"
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${viewMode === 'calendar' ? 'bg-white shadow-sm' : 'hover:bg-white/50'}`}
               style={{ color: viewMode === 'calendar' ? '#403D3D' : '#403D3D99' }}
             >
-              <LayoutGrid className="h-4 w-4" />
-              Calendar
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Calendar</span>
             </button>
             <button
               onClick={() => handleViewModeChange('list')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'list'
-                ? 'bg-white shadow-sm'
-                : 'hover:bg-white/50'
-                }`}
+              title="List view"
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm' : 'hover:bg-white/50'}`}
               style={{ color: viewMode === 'list' ? '#403D3D' : '#403D3D99' }}
             >
-              <List className="h-4 w-4" />
-              List
+              <List className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">List</span>
             </button>
             <button
               onClick={() => handleViewModeChange('rooms')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'rooms'
-                ? 'bg-white shadow-sm'
-                : 'hover:bg-white/50'
-                }`}
+              title="Rooms view"
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${viewMode === 'rooms' ? 'bg-white shadow-sm' : 'hover:bg-white/50'}`}
               style={{ color: viewMode === 'rooms' ? '#403D3D' : '#403D3D99' }}
             >
-              <Wrench className="h-4 w-4" />
-              Rooms
+              <Wrench className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Rooms</span>
             </button>
           </div>
 
           <button
             onClick={() => setIsBookingModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
-            Create Booking
+            <span className="hidden sm:inline">Create </span>Booking
           </button>
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            className="p-2 sm:flex sm:items-center sm:gap-2 sm:px-4 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            title="Refresh"
           >
             <RefreshCw className="h-4 w-4" />
-            Refresh
+            <span className="hidden sm:inline text-sm font-medium">Refresh</span>
           </button>
         </div>
       </div>
@@ -303,7 +298,7 @@ export default function BookingsManagement() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white min-w-[200px]"
+            className="w-full sm:w-auto pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white sm:min-w-[180px]"
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
