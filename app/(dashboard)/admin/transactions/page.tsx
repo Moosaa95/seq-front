@@ -32,10 +32,10 @@ export default function TransactionsManagement() {
 
   const filteredTransactions = payments.filter((payment) => {
     const matchesSearch =
-      payment.booking_details.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.booking_details.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (payment.booking_details?.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (payment.booking_details?.email ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       payment.transaction_reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.booking_details.apartment_details.title.toLowerCase().includes(searchTerm.toLowerCase());
+      (payment.booking_details?.apartment_details?.title ?? '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
 
@@ -237,13 +237,13 @@ export default function TransactionsManagement() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {payment.booking_details.name}
+                        {payment.booking_details?.name ?? '—'}
                       </div>
-                      <div className="text-sm text-gray-500">{payment.booking_details.email}</div>
+                      <div className="text-sm text-gray-500">{payment.booking_details?.email ?? ''}</div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900 max-w-xs truncate">
-                        {payment.booking_details.apartment_details?.title ?? '—'}
+                        {payment.booking_details?.apartment_details?.title ?? '—'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

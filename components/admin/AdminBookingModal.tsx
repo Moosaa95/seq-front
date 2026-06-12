@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, AlertCircle, Search, ChevronLeft, ChevronRight,
-  Upload, User, MapPin, FileText,
+  Upload, User, MapPin, FileText, Tag,
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -12,8 +12,9 @@ import {
   isToday, getDay, parseISO, startOfDay, differenceInDays,
 } from 'date-fns';
 import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
-import { useCreateBookingMutation, useRecordWalkInPaymentMutation } from '@/lib/store/api/adminApi';
+import { useCreateBookingMutation } from '@/lib/store/api/adminApi';
 import type { ApiApartment } from '@/lib/store/api/propertyApi';
+import BookingPaymentLedger from '@/components/admin/BookingPaymentLedger';
 
 interface AdminBookingModalProps {
   isOpen: boolean;
@@ -239,16 +240,10 @@ export default function AdminBookingModal({
     {},
     { skip: !isOpen }
   );
-  const [createBooking, { isLoading: loading, error: apiError, isSuccess: success, data: responseData }] =
+  const [createBooking, { isLoading: loading, error: apiError, isSuccess: success, data: responseData, reset: resetCreate }] =
     useCreateBookingMutation();
-  const [recordPayment, { isLoading: paymentLoading, isSuccess: paymentSuccess, error: paymentError }] =
-    useRecordWalkInPaymentMutation();
 
   const bookingResult = (responseData as any)?.booking;
-  const [paymentForm, setPaymentForm] = useState<{
-    payment_method: 'cash' | 'pos' | 'bank_transfer' | 'card';
-    beneficiary_name: string;
-  }>({ payment_method: 'cash', beneficiary_name: '' });
   const errorMsg = (() => {
     if (!apiError) return null;
     if (!('data' in (apiError as any))) return 'Failed to create booking';
@@ -266,7 +261,7 @@ export default function AdminBookingModal({
     return 'Failed to create booking';
   })();
 
-  const apartments = apartmentsData?.results || [];
+  const apartments = (apartmentsData?.results || []).slice().sort((a: any, b: any) => a.title.localeCompare(b.title));
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedApartment, setSelectedApartment] = useState<any>(null);
@@ -290,6 +285,9 @@ export default function AdminBookingModal({
   };
 
   const [formData, setFormData] = useState<BookingFormData>(emptyForm);
+  const [discountType, setDiscountType] = useState<'none' | 'fixed' | 'percentage'>('none');
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountReason, setDiscountReason] = useState('');
 
   // Pre-fill from calendar click
   useEffect(() => {
@@ -305,16 +303,6 @@ export default function AdminBookingModal({
     }
   }, [isOpen, initialApartment, initialCheckIn]);
 
-  // Auto-close after payment is confirmed
-  useEffect(() => {
-    if (paymentSuccess) {
-      const t = setTimeout(() => {
-        handleCleanup();
-        onSuccess?.();
-      }, 1800);
-      return () => clearTimeout(t);
-    }
-  }, [paymentSuccess]);
 
   const handleCleanup = () => {
     setFormData(emptyForm);
@@ -322,22 +310,14 @@ export default function AdminBookingModal({
     setSearchTerm('');
     setIdPreview(null);
     setIdFileName(null);
-    setPaymentForm({ payment_method: 'cash', beneficiary_name: '' });
+    setDiscountType('none');
+    setDiscountValue('');
+    setDiscountReason('');
     if (fileInputRef.current) fileInputRef.current.value = '';
+    resetCreate();
     onClose();
   };
 
-  const handleRecordPayment = async () => {
-    if (!bookingResult?.booking_id) return;
-    try {
-      await recordPayment({
-        bookingId: bookingResult.booking_id,
-        ...paymentForm,
-      }).unwrap();
-    } catch (err) {
-      console.error('Failed to record payment:', err);
-    }
-  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -395,6 +375,11 @@ export default function AdminBookingModal({
     fd.append('purpose', formData.purpose);
     if (formData.special_requests) fd.append('special_requests', formData.special_requests);
     if (formData.id_document) fd.append('id_document', formData.id_document);
+    if (discountType !== 'none' && discountValue) {
+      fd.append('discount_type', discountType);
+      fd.append('discount_value', discountValue);
+      if (discountReason) fd.append('discount_reason', discountReason);
+    }
 
     try {
       await createBooking(fd).unwrap();
@@ -446,73 +431,22 @@ export default function AdminBookingModal({
                   </div>
                 )}
 
-                {/* ── Step 2: Payment Recording (shown after booking is created) ── */}
+                {/* ── Step 2: Payment Ledger (shown after booking is created) ── */}
                 {success && bookingResult && (
-                  <div className="border-2 border-emerald-300 bg-emerald-50 rounded-xl p-5 space-y-4">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-bold text-emerald-900">Booking Created — Record Payment</p>
-                        <p className="text-xs text-emerald-700 mt-0.5">
-                          ID: {bookingResult.booking_id} · {bookingResult.nights} night{bookingResult.nights !== 1 ? 's' : ''} ·{' '}
-                          {bookingResult.currency}{parseFloat(bookingResult.total_amount).toLocaleString()}
-                        </p>
-                      </div>
+                  <div className="border-2 border-emerald-200 rounded-xl overflow-hidden">
+                    <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200">
+                      <p className="text-xs font-bold text-emerald-800">
+                        Booking Created — Record Payment Below
+                      </p>
+                      <p className="text-[11px] text-emerald-600">
+                        {bookingResult.booking_id} · {bookingResult.nights} night{bookingResult.nights !== 1 ? 's' : ''} · {bookingResult.currency}{parseFloat(bookingResult.total_amount).toLocaleString()}
+                      </p>
                     </div>
-
-                    {paymentSuccess ? (
-                      <div className="bg-white rounded-lg p-3 border border-emerald-200 text-sm font-semibold text-emerald-800 text-center">
-                        Payment recorded — booking confirmed!
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">Payment Method *</label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {([
-                              { value: 'cash',          label: 'Cash' },
-                              { value: 'pos',           label: 'POS Terminal' },
-                              { value: 'bank_transfer', label: 'Bank Transfer' },
-                              { value: 'card',          label: 'Card' },
-                            ] as const).map(opt => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => setPaymentForm(p => ({ ...p, payment_method: opt.value }))}
-                                className={`py-2 px-3 rounded-lg text-sm font-semibold border-2 transition-colors ${
-                                  paymentForm.payment_method === opt.value
-                                    ? 'border-emerald-600 bg-emerald-600 text-white'
-                                    : 'border-gray-300 bg-white text-gray-700 hover:border-emerald-400'
-                                }`}
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">Received By (Beneficiary)</label>
-                          <input
-                            type="text"
-                            value={paymentForm.beneficiary_name}
-                            onChange={e => setPaymentForm(p => ({ ...p, beneficiary_name: e.target.value }))}
-                            placeholder="Staff name who received the payment"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          />
-                        </div>
-                        {paymentError && (
-                          <p className="text-xs text-red-600">Failed to record payment. Please try again.</p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleRecordPayment}
-                          disabled={paymentLoading}
-                          className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                        >
-                          {paymentLoading ? 'Recording…' : 'Confirm Payment & Book'}
-                        </button>
-                      </div>
-                    )}
+                    <BookingPaymentLedger
+                      booking={bookingResult}
+                      onClose={() => { handleCleanup(); onSuccess?.(); }}
+                      inline
+                    />
                   </div>
                 )}
 
@@ -757,6 +691,61 @@ export default function AdminBookingModal({
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 placeholder:text-gray-400 resize-none"
                   />
                 </div>
+
+                {/* ── Discount ── */}
+                {!success && (() => {
+                  const aptPrice = selectedApartment ? parseFloat(selectedApartment.price) : 0;
+                  const nights = formData.checkIn && formData.checkOut
+                    ? Math.max(0, (new Date(formData.checkOut).getTime() - new Date(formData.checkIn).getTime()) / 86400000)
+                    : 0;
+                  const baseTotal = aptPrice * nights;
+                  const dv = parseFloat(discountValue) || 0;
+                  const discAmt = discountType === 'percentage' ? baseTotal * dv / 100 : discountType === 'fixed' ? Math.min(dv, baseTotal) : 0;
+                  return (
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-purple-600" />
+                        <p className="text-sm font-semibold text-purple-800">Discount <span className="font-normal text-purple-400 text-xs">(Optional)</span></p>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <select
+                          value={discountType}
+                          onChange={e => { setDiscountType(e.target.value as any); setDiscountValue(''); }}
+                          className="px-3 py-2 border border-purple-300 rounded-xl text-sm bg-white text-gray-800 focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                        >
+                          <option value="none">No discount</option>
+                          <option value="fixed">Fixed amount (₦)</option>
+                          <option value="percentage">Percentage (%)</option>
+                        </select>
+                        {discountType !== 'none' && (
+                          <>
+                            <input
+                              type="number" min="0"
+                              max={discountType === 'percentage' ? '100' : undefined}
+                              value={discountValue}
+                              onChange={e => setDiscountValue(e.target.value)}
+                              placeholder={discountType === 'percentage' ? '% e.g. 10' : '₦ e.g. 5000'}
+                              className="w-32 px-3 py-2 border border-purple-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                            />
+                            <input
+                              type="text"
+                              value={discountReason}
+                              onChange={e => setDiscountReason(e.target.value)}
+                              placeholder="Reason e.g. loyalty, corp rate…"
+                              className="flex-1 min-w-0 px-3 py-2 border border-purple-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                            />
+                          </>
+                        )}
+                      </div>
+                      {baseTotal > 0 && discAmt > 0 && (
+                        <div className="text-xs text-purple-700 bg-purple-100 rounded-lg px-3 py-2 flex justify-between">
+                          <span>Price after discount ({selectedApartment?.currency})</span>
+                          <span className="font-bold">{(baseTotal - discAmt).toLocaleString()} <span className="font-normal text-purple-400">saves {discAmt.toLocaleString()}</span></span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* ── Actions ── */}
                 <div className="sticky bottom-0 bg-white pt-4 border-t border-gray-200 -mx-6 px-6 -mb-6 pb-6 mt-2">

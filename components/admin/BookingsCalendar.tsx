@@ -79,7 +79,7 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
             if (a.propertyId === null) return 1;
             if (b.propertyId === null) return -1;
             return a.propertyName.localeCompare(b.propertyName);
-        });
+        }).map(group => ({ ...group, apts: group.apts.slice().sort((a, b) => a.title.localeCompare(b.title)) }));
     }, [apartments]);
 
     const bookingsByApt = useMemo(() => {

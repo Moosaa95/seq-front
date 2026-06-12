@@ -25,7 +25,15 @@ export interface ApiBooking {
     total_amount: string;
     currency: string;
     status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-    payment_status: string;
+    payment_status: 'unpaid' | 'partial' | 'paid' | string;
+    discount_type?: 'none' | 'fixed' | 'percentage';
+    discount_value?: string;
+    discount_reason?: string;
+    discount_amount?: string;
+    effective_total?: string;
+    amount_paid?: string;
+    balance_remaining?: string;
+    payment_due_date?: string | null;
     special_requests?: string;
     cancellation_reason?: string;
     checked_in_at?: string;
@@ -44,17 +52,28 @@ export interface ApiBooking {
 export interface ApiPayment {
     id: string;
     booking: string;
-    booking_details: ApiBooking;
+    booking_details?: ApiBooking;
     amount: string;
     currency: string;
     payment_method: string;
     beneficiary_name?: string;
+    notes?: string;
     transaction_reference: string;
-    gateway_response: any;
+    gateway_response?: any;
     status: string;
     paid_at: string | null;
     created_at: string;
     updated_at: string;
+}
+
+export interface BookingPaymentsResponse {
+    booking_id: string;
+    effective_total: number;
+    amount_paid: number;
+    balance_remaining: number;
+    payment_status: string;
+    payment_due_date: string | null;
+    payments: ApiPayment[];
 }
 
 export interface ApiContactInquiry {
@@ -264,15 +283,46 @@ export const adminApi = apiSlice.injectEndpoints({
         }),
 
         recordWalkInPayment: builder.mutation<
-            { success: boolean; message: string; payment: ApiPayment; booking: ApiBooking },
-            { bookingId: string; payment_method: 'cash' | 'pos' | 'bank_transfer' | 'card'; beneficiary_name: string }
+            {
+                success: boolean;
+                message: string;
+                payment: ApiPayment;
+                booking: ApiBooking;
+                amount_paid_now: number;
+                total_paid: number;
+                effective_total: number;
+                balance_remaining: number;
+            },
+            {
+                bookingId: string;
+                payment_method: 'cash' | 'pos' | 'bank_transfer' | 'card';
+                beneficiary_name: string;
+                amount?: number;
+                notes?: string;
+                payment_due_date?: string;
+                discount_type?: 'none' | 'fixed' | 'percentage';
+                discount_value?: number;
+                discount_reason?: string;
+            }
         >({
             query: ({ bookingId, ...body }) => ({
                 url: `/bookings/${bookingId}/record_walkin_payment/`,
                 method: 'POST',
                 body,
             }),
-            invalidatesTags: [{ type: 'Booking', id: 'LIST' }, { type: 'Payment', id: 'LIST' }],
+            invalidatesTags: (result, error, { bookingId }) => [
+                { type: 'Booking', id: bookingId },
+                { type: 'Booking', id: 'LIST' },
+                { type: 'Payment', id: 'LIST' },
+            ],
+        }),
+
+        getBookingPayments: builder.query<BookingPaymentsResponse, string>({
+            query: (bookingId) => `/bookings/${bookingId}/payments/`,
+            providesTags: (result, error, bookingId) => [
+                { type: 'Payment', id: `booking-${bookingId}` },
+                { type: 'Payment', id: 'LIST' },
+            ],
         }),
 
         cancelBooking: builder.mutation<{ success: boolean; message: string; booking: ApiBooking }, string>({
@@ -537,6 +587,7 @@ export const {
     useUpdateBookingMutation,
     useCancelBookingMutation,
     useRecordWalkInPaymentMutation,
+    useGetBookingPaymentsQuery,
     useGetPaymentsQuery,
     useGetPaymentQuery,
     useGetContactInquiriesQuery,

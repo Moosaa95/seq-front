@@ -28,10 +28,11 @@ import CancellationModal from '@/components/admin/bookings/CancellationModal';
 import BookingsCalendar from '@/components/admin/BookingsCalendar';
 import RaiseDisputeModal from '@/components/admin/RaiseDisputeModal';
 import ReceiptModal from '@/components/admin/ReceiptModal';
+import BookingPaymentLedger from '@/components/admin/BookingPaymentLedger';
 import type { ApiBooking } from '@/lib/store/api/adminApi';
 import { useGetBookingsQuery, useUpdateBookingStatusMutation, useLockApartmentMutation, useUnlockApartmentMutation } from '@/lib/store/api/adminApi';
 import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
-import { useGetBlockedDatesQuery, useCreateBlockedDateMutation, useDeleteBlockedDateMutation } from '@/lib/store/api/calendarApi';
+import { useGetBlockedDatesQuery, useCreateBlockedDateMutation, useDeleteBlockedDateMutation, useSyncExternalCalendarMutation } from '@/lib/store/api/calendarApi';
 import { format as dateFnsFormat } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -42,6 +43,7 @@ export default function BookingsManagement() {
   const [viewMode, setViewMode] = useState<ViewMode>('calendar');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isCancellationModalOpen, setIsCancellationModalOpen] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export default function BookingsManagement() {
   const [walkInCheckIn, setWalkInCheckIn] = useState<string | undefined>(undefined);
   const [disputeBooking, setDisputeBooking] = useState<ApiBooking | null>(null);
   const [receiptBooking, setReceiptBooking] = useState<ApiBooking | null>(null);
+  const [paymentLedgerBooking, setPaymentLedgerBooking] = useState<ApiBooking | null>(null);
 
   // Load view preference from localStorage on mount
   useEffect(() => {
@@ -73,6 +76,8 @@ export default function BookingsManagement() {
   const [unlockApartment] = useUnlockApartmentMutation();
   const [createBlockedDate] = useCreateBlockedDateMutation();
   const [deleteBlockedDate] = useDeleteBlockedDateMutation();
+  const [syncExternalCalendar, { isLoading: isSyncing }] = useSyncExternalCalendarMutation();
+  const [syncingCalendarId, setSyncingCalendarId] = useState<string | null>(null);
 
   // Permanent lock state
   const [lockingId, setLockingId] = useState<string | null>(null);
@@ -88,8 +93,12 @@ export default function BookingsManagement() {
   const [lockReason, setLockReason] = useState('');
   const [lockModalAptId, setLockModalAptId] = useState<string | null>(null);
 
+  // iCal unlock confirmation
+  const [icalUnlockTarget, setIcalUnlockTarget] = useState<{ id: string; label: string; calendarId: string | null } | null>(null);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+
   const bookings = bookingsData?.results || [];
-  const apartments = apartmentsData?.results || [];
+  const apartments = (apartmentsData?.results || []).slice().sort((a, b) => a.title.localeCompare(b.title));
   const blockedDates = blockedDatesData?.results || [];
 
   const handleStatusUpdate = async (
@@ -171,6 +180,32 @@ export default function BookingsManagement() {
     }
   };
 
+  const handleConfirmIcalUnlock = async () => {
+    if (!icalUnlockTarget) return;
+    setIsUnlocking(true);
+    try {
+      await deleteBlockedDate(icalUnlockTarget.id).unwrap();
+      toast.success('Dates unlocked — those dates are now bookable on this platform.');
+      setIcalUnlockTarget(null);
+    } catch {
+      toast.error('Failed to unlock dates.');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const handleResync = async (calendarId: string) => {
+    setSyncingCalendarId(calendarId);
+    try {
+      const result = await syncExternalCalendar(calendarId).unwrap();
+      toast.success(`Re-synced — ${result.created} added, ${result.updated} updated.`);
+    } catch {
+      toast.error('Re-sync failed.');
+    } finally {
+      setSyncingCalendarId(null);
+    }
+  };
+
   const filteredBookings = bookings.filter((booking) => {
     const matchesSearch =
       booking.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -178,9 +213,19 @@ export default function BookingsManagement() {
       (booking.apartment_details?.title ?? '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
+    const matchesPayment = paymentFilter === 'all' || booking.payment_status === paymentFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesPayment;
   });
+
+  const paymentSummary = {
+    paid: bookings.filter(b => b.payment_status === 'paid').length,
+    partial: bookings.filter(b => b.payment_status === 'partial').length,
+    unpaid: bookings.filter(b => b.payment_status === 'unpaid' || b.payment_status === 'pending').length,
+    totalOutstanding: bookings
+      .filter(b => b.payment_status !== 'paid')
+      .reduce((sum, b) => sum + parseFloat((b as any).balance_remaining || b.total_amount || '0'), 0),
+  };
 
   const getStatusBadge = (status: string) => {
     const styles = {
@@ -193,13 +238,29 @@ export default function BookingsManagement() {
   };
 
   const getPaymentStatusBadge = (status: string) => {
-    const styles = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      paid: 'bg-green-100 text-green-800',
-      refunded: 'bg-gray-100 text-gray-800',
+    const styles: Record<string, string> = {
+      paid: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+      partial: 'bg-amber-100 text-amber-800 border border-amber-200',
+      unpaid: 'bg-red-100 text-red-700 border border-red-200',
+      pending: 'bg-red-100 text-red-700 border border-red-200',
+      refunded: 'bg-gray-100 text-gray-600 border border-gray-200',
     };
-    return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800';
+    return styles[status] || 'bg-gray-100 text-gray-800';
   };
+
+  const getPaymentLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      paid: 'Paid in Full',
+      partial: 'Part Paid',
+      unpaid: 'Unpaid',
+      pending: 'Unpaid',
+      refunded: 'Refunded',
+    };
+    return labels[status] || status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const fmt = (val: string | number | undefined, currency: string) =>
+    `${currency}${parseFloat(String(val ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -273,6 +334,41 @@ export default function BookingsManagement() {
         </div>
       </div>
 
+      {/* Payment Summary Strip */}
+      <div className="mb-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button
+          onClick={() => setPaymentFilter('all')}
+          className={`rounded-xl border p-3 text-left transition-all ${paymentFilter === 'all' ? 'ring-2 ring-gray-400' : 'hover:border-gray-300'} bg-white`}
+        >
+          <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold">All Bookings</p>
+          <p className="text-2xl font-bold mt-0.5" style={{ color: '#403D3D' }}>{bookings.length}</p>
+        </button>
+        <button
+          onClick={() => setPaymentFilter('paid')}
+          className={`rounded-xl border p-3 text-left transition-all ${paymentFilter === 'paid' ? 'ring-2 ring-emerald-500' : 'hover:border-emerald-200'} bg-white`}
+        >
+          <p className="text-[11px] text-emerald-600 uppercase tracking-wide font-semibold">Paid in Full</p>
+          <p className="text-2xl font-bold text-emerald-600 mt-0.5">{paymentSummary.paid}</p>
+        </button>
+        <button
+          onClick={() => setPaymentFilter('partial')}
+          className={`rounded-xl border p-3 text-left transition-all ${paymentFilter === 'partial' ? 'ring-2 ring-amber-500' : 'hover:border-amber-200'} bg-white`}
+        >
+          <p className="text-[11px] text-amber-600 uppercase tracking-wide font-semibold">Part Paid</p>
+          <p className="text-2xl font-bold text-amber-600 mt-0.5">{paymentSummary.partial}</p>
+        </button>
+        <button
+          onClick={() => setPaymentFilter('unpaid')}
+          className={`rounded-xl border p-3 text-left transition-all ${paymentFilter === 'unpaid' ? 'ring-2 ring-red-400' : 'hover:border-red-200'} bg-white`}
+        >
+          <p className="text-[11px] text-red-600 uppercase tracking-wide font-semibold">Unpaid</p>
+          <p className="text-2xl font-bold text-red-600 mt-0.5">{paymentSummary.unpaid}</p>
+          {paymentSummary.totalOutstanding > 0 && (
+            <p className="text-[10px] text-red-400 mt-0.5">₦{paymentSummary.totalOutstanding.toLocaleString()} outstanding</p>
+          )}
+        </button>
+      </div>
+
       {/* Error Display */}
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
@@ -298,13 +394,26 @@ export default function BookingsManagement() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full sm:w-auto pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white sm:min-w-[180px]"
+            className="w-full sm:w-auto pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white sm:min-w-[160px]"
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value)}
+            className="w-full sm:w-auto pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none bg-white sm:min-w-[160px]"
+          >
+            <option value="all">All Payments</option>
+            <option value="paid">Paid in Full</option>
+            <option value="partial">Part Paid</option>
+            <option value="unpaid">Unpaid</option>
           </select>
         </div>
       </div>
@@ -342,6 +451,7 @@ export default function BookingsManagement() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {apartments.map((apt) => {
               const aptBlocks = blockedDates.filter(bd => bd.apartment === apt.id && !bd.external_calendar);
+              const icalBlocks = blockedDates.filter(bd => bd.apartment === apt.id && !!bd.external_calendar);
               return (
                 <div key={apt.id} className={`bg-white rounded-xl border p-4 shadow-sm flex flex-col gap-3 ${apt.is_locked ? 'border-red-300 bg-red-50/20' : 'border-gray-200'}`}>
                   {/* Header */}
@@ -352,7 +462,7 @@ export default function BookingsManagement() {
                     </div>
                     {apt.is_locked ? (
                       <span className="flex items-center gap-1 text-[10px] font-bold bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full ml-2 flex-shrink-0">
-                        <Lock className="h-2.5 w-2.5" /> Permanently Locked
+                        <Lock className="h-2.5 w-2.5" /> Locked
                       </span>
                     ) : (
                       <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full ml-2 flex-shrink-0">Active</span>
@@ -364,10 +474,10 @@ export default function BookingsManagement() {
                     <p className="text-xs text-red-600 italic bg-red-50 rounded-lg px-2 py-1 border border-red-100">{apt.lock_reason}</p>
                   )}
 
-                  {/* Existing date-range blocks */}
+                  {/* Admin date-range blocks */}
                   {aptBlocks.length > 0 && (
                     <div className="space-y-1.5">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Blocked Periods</p>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Admin Blocks</p>
                       {aptBlocks.map(bd => (
                         <div key={bd.id} className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
                           <div className="min-w-0">
@@ -376,15 +486,56 @@ export default function BookingsManagement() {
                             </p>
                             {bd.notes && <p className="text-[10px] text-orange-600 truncate">{bd.notes}</p>}
                           </div>
-                          <button
-                            onClick={() => handleRemoveBlock(bd.id)}
-                            className="p-1 rounded hover:bg-orange-100 text-orange-500 flex-shrink-0"
-                            title="Remove this block"
-                          >
+                          <button onClick={() => handleRemoveBlock(bd.id)} className="p-1 rounded hover:bg-orange-100 text-orange-500 flex-shrink-0" title="Remove">
                             <X className="h-3 w-3" />
                           </button>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* iCal (Airbnb / external) blocks */}
+                  {icalBlocks.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                          Synced from External Calendar ({icalBlocks.length})
+                        </p>
+                      </div>
+                      {icalBlocks.map(bd => {
+                        const source = bd.external_calendar_details?.source_display ?? 'External';
+                        const label = `${dateFnsFormat(new Date(bd.start_date + 'T00:00:00'), 'MMM d')} – ${dateFnsFormat(new Date(bd.end_date + 'T00:00:00'), 'MMM d, yyyy')}`;
+                        return (
+                          <div key={bd.id} className="bg-red-50 border border-red-200 rounded-lg overflow-hidden">
+                            <div className="flex items-center justify-between gap-2 px-2.5 py-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-red-800">{label}</p>
+                                <p className="text-[10px] text-red-500 mt-0.5">
+                                  Locked by {source} sync — guests cannot book these dates
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {bd.external_calendar && (
+                                  <button
+                                    onClick={() => handleResync(bd.external_calendar!)}
+                                    disabled={syncingCalendarId === bd.external_calendar}
+                                    className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors"
+                                  >
+                                    {syncingCalendarId === bd.external_calendar ? '…' : '↻ Re-sync'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setIcalUnlockTarget({ id: bd.id, label, calendarId: bd.external_calendar })}
+                                  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white border border-red-300 text-red-700 hover:bg-red-100 transition-colors flex items-center gap-1"
+                                >
+                                  <Unlock className="h-3 w-3" />
+                                  Unlock
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -451,14 +602,13 @@ export default function BookingsManagement() {
                         {booking.apartment_details?.location ?? ''}
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2 items-end">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(booking.status)} flex items-center gap-1`}>
                         {getStatusIcon(booking.status)}
                         {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
                       </span>
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPaymentStatusBadge(booking.payment_status)} flex items-center gap-1`}>
-                        {getStatusIcon(booking.payment_status)}
-                        {booking.payment_status.charAt(0).toUpperCase() + booking.payment_status.slice(1)}
+                        {getPaymentLabel(booking.payment_status)}
                       </span>
                     </div>
                   </div>
@@ -494,21 +644,96 @@ export default function BookingsManagement() {
                         {new Date(booking.check_out).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="pt-2 border-t border-gray-200">
-                      <p className="text-xs text-gray-500 mb-1">Total Amount</p>
-                      <p className="text-xl font-bold text-emerald-600">
-                        {booking.currency}{parseFloat(booking.total_amount).toLocaleString()}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {booking.nights} nights • {booking.guests} guests
-                      </p>
+                    <div className="pt-2 border-t border-gray-200 space-y-1.5">
+                      {/* Original total */}
+                      <div className="flex justify-between items-baseline">
+                        <p className="text-xs text-gray-400">Total</p>
+                        <p className="text-sm font-semibold text-gray-600">{fmt(booking.total_amount, booking.currency)}</p>
+                      </div>
+                      {/* Discount line — only shown when one exists */}
+                      {(booking as any).discount_type && (booking as any).discount_type !== 'none' && parseFloat((booking as any).discount_amount || '0') > 0 && (
+                        <div className="flex justify-between items-baseline">
+                          <p className="text-xs text-purple-500">Discount</p>
+                          <p className="text-sm font-semibold text-purple-600">−{fmt((booking as any).discount_amount, booking.currency)}</p>
+                        </div>
+                      )}
+                      {/* Payable */}
+                      <div className="flex justify-between items-baseline border-t border-dashed border-gray-200 pt-1">
+                        <p className="text-xs text-gray-500 font-semibold">Payable</p>
+                        <p className="text-base font-bold" style={{ color: '#403D3D' }}>
+                          {fmt((booking as any).effective_total ?? booking.total_amount, booking.currency)}
+                        </p>
+                      </div>
+                      {/* Paid / Balance */}
+                      {booking.payment_status === 'paid' ? (
+                        <div className="flex items-center gap-1.5 bg-emerald-50 rounded-lg px-2 py-1 border border-emerald-100">
+                          <CheckCircle className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                          <p className="text-xs font-semibold text-emerald-700">Paid in full</p>
+                        </div>
+                      ) : booking.payment_status === 'partial' ? (
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-baseline">
+                            <p className="text-xs text-emerald-600">Paid so far</p>
+                            <p className="text-sm font-semibold text-emerald-600">{fmt((booking as any).amount_paid, booking.currency)}</p>
+                          </div>
+                          <div className="flex justify-between items-baseline bg-amber-50 rounded-lg px-2 py-1 border border-amber-100">
+                            <p className="text-xs font-bold text-amber-700">Balance due</p>
+                            <p className="text-sm font-bold text-amber-700">{fmt((booking as any).balance_remaining, booking.currency)}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-baseline bg-red-50 rounded-lg px-2 py-1 border border-red-100">
+                          <p className="text-xs font-bold text-red-700">Balance due</p>
+                          <p className="text-sm font-bold text-red-700">
+                            {fmt((booking as any).balance_remaining ?? (booking as any).effective_total ?? booking.total_amount, booking.currency)}
+                          </p>
+                        </div>
+                      )}
+                      <p className="text-[11px] text-gray-400">{booking.nights} nights • {booking.guests} guests</p>
                     </div>
                   </div>
                 </div>
               </div>
 
+              {/* Outstanding balance banner — shown for any unpaid / part-paid booking */}
+              {booking.payment_status !== 'paid' && booking.status !== 'cancelled' && (
+                <div
+                  className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between gap-3 cursor-pointer transition-all hover:shadow-sm ${
+                    booking.payment_status === 'partial'
+                      ? 'bg-amber-50 border-amber-200 hover:bg-amber-100'
+                      : 'bg-red-50 border-red-200 hover:bg-red-100'
+                  }`}
+                  onClick={() => setPaymentLedgerBooking(booking)}
+                >
+                  <div className="min-w-0">
+                    <p className={`text-xs font-bold uppercase tracking-wide ${booking.payment_status === 'partial' ? 'text-amber-700' : 'text-red-700'}`}>
+                      {booking.payment_status === 'partial' ? 'Part Paid — Balance Outstanding' : 'No Payment Received'}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${booking.payment_status === 'partial' ? 'text-amber-600' : 'text-red-600'}`}>
+                      {booking.name} owes
+                      {(booking as any).payment_due_date && ` · due ${new Date((booking as any).payment_due_date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <span className={`text-lg font-bold ${booking.payment_status === 'partial' ? 'text-amber-700' : 'text-red-700'}`}>
+                      {fmt(
+                        (booking as any).balance_remaining ?? (booking as any).effective_total ?? booking.total_amount,
+                        booking.currency
+                      )}
+                    </span>
+                    <span className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
+                      booking.payment_status === 'partial'
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-red-600 text-white'
+                    }`}>
+                      Record Payment →
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div className="mt-4 pt-4 border-t border-gray-200 flex flex-wrap gap-2">
+              <div className="mt-3 pt-3 border-t border-gray-200 flex flex-wrap gap-2">
                 <button
                   onClick={() => handleStatusUpdate(booking.booking_id, 'confirmed')}
                   disabled={booking.status === 'confirmed'}
@@ -543,6 +768,23 @@ export default function BookingsManagement() {
                   Cancel
                 </button>
                 <button
+                  onClick={() => setPaymentLedgerBooking(booking)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                    booking.payment_status === 'paid'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                      : booking.payment_status === 'partial'
+                        ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                        : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                  }`}
+                >
+                  Payments
+                  {booking.payment_status !== 'paid' && (booking as any).balance_remaining && (
+                    <span className="ml-1.5 text-[10px] font-bold opacity-80">
+                      ({fmt((booking as any).balance_remaining, booking.currency)} due)
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => setReceiptBooking(booking)}
                   className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
                 >
@@ -557,6 +799,49 @@ export default function BookingsManagement() {
               </div>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {/* iCal unlock confirmation modal */}
+      {icalUnlockTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <Unlock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Unlock These Dates?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{icalUnlockTarget.label}</p>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 space-y-1.5">
+              <p className="text-sm text-amber-800 font-semibold">These dates were blocked by an external calendar sync.</p>
+              <p className="text-xs text-amber-700">
+                Unlocking will make them bookable on this platform immediately. If you re-sync the calendar, the block may be re-applied based on what&apos;s on the external calendar.
+              </p>
+              {icalUnlockTarget.calendarId && (
+                <p className="text-xs text-amber-600 font-medium">
+                  Tip: To permanently remove the conflict, cancel the booking on the external calendar first, then re-sync here.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIcalUnlockTarget(null)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Keep Locked
+              </button>
+              <button
+                onClick={handleConfirmIcalUnlock}
+                disabled={isUnlocking}
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {isUnlocking ? 'Unlocking…' : 'Yes, Unlock Dates'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -649,6 +934,14 @@ export default function BookingsManagement() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Payment Ledger Modal */}
+      {paymentLedgerBooking && (
+        <BookingPaymentLedger
+          booking={paymentLedgerBooking}
+          onClose={() => setPaymentLedgerBooking(null)}
+        />
       )}
 
       {/* Admin Booking Modal */}
