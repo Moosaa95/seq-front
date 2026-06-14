@@ -30,7 +30,7 @@ import RaiseDisputeModal from '@/components/admin/RaiseDisputeModal';
 import ReceiptModal from '@/components/admin/ReceiptModal';
 import BookingPaymentLedger from '@/components/admin/BookingPaymentLedger';
 import type { ApiBooking } from '@/lib/store/api/adminApi';
-import { useGetBookingsQuery, useUpdateBookingStatusMutation, useLockApartmentMutation, useUnlockApartmentMutation } from '@/lib/store/api/adminApi';
+import { useGetBookingsQuery, useUpdateBookingStatusMutation, useDeleteBookingMutation, useLockApartmentMutation, useUnlockApartmentMutation } from '@/lib/store/api/adminApi';
 import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
 import { useGetBlockedDatesQuery, useCreateBlockedDateMutation, useDeleteBlockedDateMutation, useSyncExternalCalendarMutation } from '@/lib/store/api/calendarApi';
 import { format as dateFnsFormat } from 'date-fns';
@@ -52,6 +52,9 @@ export default function BookingsManagement() {
   const [disputeBooking, setDisputeBooking] = useState<ApiBooking | null>(null);
   const [receiptBooking, setReceiptBooking] = useState<ApiBooking | null>(null);
   const [paymentLedgerBooking, setPaymentLedgerBooking] = useState<ApiBooking | null>(null);
+  const [editBooking, setEditBooking] = useState<ApiBooking | null>(null);
+  const [deleteConfirmBooking, setDeleteConfirmBooking] = useState<ApiBooking | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Load view preference from localStorage on mount
   useEffect(() => {
@@ -72,6 +75,7 @@ export default function BookingsManagement() {
   const { data: apartmentsData } = useGetApartmentsQuery({ page_size: 200, ordering: "title" });
   const { data: blockedDatesData } = useGetBlockedDatesQuery();
   const [updateBookingStatus] = useUpdateBookingStatusMutation();
+  const [deleteBooking] = useDeleteBookingMutation();
   const [lockApartment] = useLockApartmentMutation();
   const [unlockApartment] = useUnlockApartmentMutation();
   const [createBlockedDate] = useCreateBlockedDateMutation();
@@ -117,6 +121,20 @@ export default function BookingsManagement() {
   const handleRefresh = () => {
     refetch();
     toast.success('Bookings refreshed');
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmBooking) return;
+    setIsDeleting(true);
+    try {
+      await deleteBooking(deleteConfirmBooking.booking_id).unwrap();
+      toast.success('Booking deleted');
+      setDeleteConfirmBooking(null);
+    } catch {
+      toast.error('Failed to delete booking');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleLock = async (aptId: string, reason: string) => {
@@ -796,6 +814,18 @@ export default function BookingsManagement() {
                 >
                   Raise Dispute
                 </button>
+                <button
+                  onClick={() => setEditBooking(booking)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setDeleteConfirmBooking(booking)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
+                >
+                  Delete
+                </button>
               </div>
             </motion.div>
           ))}
@@ -944,7 +974,7 @@ export default function BookingsManagement() {
         />
       )}
 
-      {/* Admin Booking Modal */}
+      {/* Create Booking Modal */}
       <AdminBookingModal
         isOpen={isBookingModalOpen}
         onClose={() => {
@@ -961,6 +991,60 @@ export default function BookingsManagement() {
         initialApartment={walkInApartment}
         initialCheckIn={walkInCheckIn}
       />
+
+      {/* Edit Booking Modal */}
+      {editBooking && (
+        <AdminBookingModal
+          isOpen={!!editBooking}
+          onClose={() => setEditBooking(null)}
+          onSuccess={() => {
+            refetch();
+            setEditBooking(null);
+            toast.success('Booking updated');
+          }}
+          bookingToEdit={editBooking}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmBooking && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <XCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Delete Booking?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">This cannot be undone</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-4">
+              <p className="text-sm font-semibold text-red-900">{deleteConfirmBooking.name}</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                {deleteConfirmBooking.apartment_details?.title} ·{' '}
+                {new Date(deleteConfirmBooking.check_in).toLocaleDateString()} →{' '}
+                {new Date(deleteConfirmBooking.check_out).toLocaleDateString()}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirmBooking(null)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Raise Dispute Modal */}
       {disputeBooking && (

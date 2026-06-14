@@ -76,6 +76,17 @@ export const metadata: Metadata = {
     canonical: BASE_URL,
   },
 
+  icons: {
+    icon: [
+      { url: '/icon', type: 'image/png', sizes: '32x32' },
+      { url: '/icon', type: 'image/png', sizes: '16x16' },
+    ],
+    apple: [
+      { url: '/apple-icon', type: 'image/png', sizes: '180x180' },
+    ],
+    shortcut: '/icon',
+  },
+
   verification: {
     // google: "YOUR_GOOGLE_SEARCH_CONSOLE_TOKEN",
   },

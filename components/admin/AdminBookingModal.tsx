@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, AlertCircle, Search, ChevronLeft, ChevronRight,
-  Upload, User, MapPin, FileText, Tag,
+  Upload, User, MapPin, FileText, Tag, UserCheck,
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -12,8 +12,9 @@ import {
   isToday, getDay, parseISO, startOfDay, differenceInDays,
 } from 'date-fns';
 import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
-import { useCreateBookingMutation } from '@/lib/store/api/adminApi';
+import { useCreateBookingMutation, useUpdateBookingMutation, useSearchGuestProfilesQuery } from '@/lib/store/api/adminApi';
 import type { ApiApartment } from '@/lib/store/api/propertyApi';
+import type { ApiBooking } from '@/lib/store/api/adminApi';
 import BookingPaymentLedger from '@/components/admin/BookingPaymentLedger';
 
 interface AdminBookingModalProps {
@@ -23,6 +24,8 @@ interface AdminBookingModalProps {
   /** Pre-filled from calendar cell click */
   initialApartment?: ApiApartment;
   initialCheckIn?: string;
+  /** When provided, modal operates in edit mode */
+  bookingToEdit?: ApiBooking;
 }
 
 interface BookingFormData {
@@ -235,13 +238,22 @@ export default function AdminBookingModal({
   onSuccess,
   initialApartment,
   initialCheckIn,
+  bookingToEdit,
 }: AdminBookingModalProps) {
+  const isEditMode = !!bookingToEdit;
+
   const { data: apartmentsData, isLoading: apartmentsLoading } = useGetApartmentsQuery(
     {},
     { skip: !isOpen }
   );
-  const [createBooking, { isLoading: loading, error: apiError, isSuccess: success, data: responseData, reset: resetCreate }] =
+  const [createBooking, { isLoading: createLoading, error: createError, isSuccess: createSuccess, data: responseData, reset: resetCreate }] =
     useCreateBookingMutation();
+  const [updateBooking, { isLoading: updateLoading, error: updateError, isSuccess: updateSuccess, reset: resetUpdate }] =
+    useUpdateBookingMutation();
+
+  const loading = isEditMode ? updateLoading : createLoading;
+  const apiError = isEditMode ? updateError : createError;
+  const success = isEditMode ? updateSuccess : createSuccess;
 
   const bookingResult = (responseData as any)?.booking;
   const errorMsg = (() => {
@@ -269,6 +281,19 @@ export default function AdminBookingModal({
   const [idFileName, setIdFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Guest profile autocomplete
+  const [guestSearch, setGuestSearch] = useState('');
+  const [showGuestDropdown, setShowGuestDropdown] = useState(false);
+  const [guestSearchDebounced, setGuestSearchDebounced] = useState('');
+  const guestSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guestInputRef = useRef<HTMLInputElement>(null);
+  const guestDropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: guestProfilesData } = useSearchGuestProfilesQuery(guestSearchDebounced, {
+    skip: !isOpen || guestSearchDebounced.length < 2,
+  });
+  const guestProfiles = guestProfilesData?.results || [];
+
   const emptyForm: BookingFormData = {
     apartment_id: '',
     name: '',
@@ -289,9 +314,37 @@ export default function AdminBookingModal({
   const [discountValue, setDiscountValue] = useState('');
   const [discountReason, setDiscountReason] = useState('');
 
-  // Pre-fill from calendar click
+  // Pre-fill: calendar click (create mode) OR edit mode
   useEffect(() => {
-    if (isOpen && initialApartment) {
+    if (!isOpen) return;
+    if (bookingToEdit) {
+      // Edit mode — populate every field from the existing booking
+      const apt = bookingToEdit.apartment_details;
+      if (apt) {
+        setSelectedApartment(apt);
+        setSearchTerm(apt.title);
+      }
+      setGuestSearch(bookingToEdit.name);
+      setFormData({
+        apartment_id: bookingToEdit.apartment,
+        name: bookingToEdit.name,
+        email: bookingToEdit.email || '',
+        phone: bookingToEdit.phone || '',
+        checkIn: bookingToEdit.check_in,
+        checkOut: bookingToEdit.check_out,
+        guests: bookingToEdit.guests,
+        special_requests: bookingToEdit.special_requests || '',
+        address: bookingToEdit.address || '',
+        id_type: bookingToEdit.id_type || '',
+        id_document: null,
+        purpose: bookingToEdit.purpose || '',
+      });
+      if ((bookingToEdit as any).discount_type && (bookingToEdit as any).discount_type !== 'none') {
+        setDiscountType((bookingToEdit as any).discount_type);
+        setDiscountValue((bookingToEdit as any).discount_value || '');
+        setDiscountReason((bookingToEdit as any).discount_reason || '');
+      }
+    } else if (initialApartment) {
       setSelectedApartment(initialApartment);
       setSearchTerm(initialApartment.title);
       setFormData((prev) => ({
@@ -301,13 +354,16 @@ export default function AdminBookingModal({
         checkOut: '',
       }));
     }
-  }, [isOpen, initialApartment, initialCheckIn]);
+  }, [isOpen, bookingToEdit, initialApartment, initialCheckIn]);
 
 
   const handleCleanup = () => {
     setFormData(emptyForm);
     setSelectedApartment(null);
     setSearchTerm('');
+    setGuestSearch('');
+    setGuestSearchDebounced('');
+    setShowGuestDropdown(false);
     setIdPreview(null);
     setIdFileName(null);
     setDiscountType('none');
@@ -315,6 +371,7 @@ export default function AdminBookingModal({
     setDiscountReason('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     resetCreate();
+    resetUpdate();
     onClose();
   };
 
@@ -360,6 +417,35 @@ export default function AdminBookingModal({
     e.preventDefault();
     if (!formData.apartment_id) { alert('Please select a unit'); return; }
     if (!formData.checkIn || !formData.checkOut) { alert('Please select check-in and check-out dates'); return; }
+
+    if (isEditMode && bookingToEdit) {
+      // Edit mode: send a plain JSON PATCH
+      try {
+        const payload: Record<string, any> = {
+          name: formData.name,
+          email: formData.email || null,
+          phone: formData.phone,
+          check_in: formData.checkIn,
+          check_out: formData.checkOut,
+          guests: formData.guests,
+          address: formData.address,
+          id_type: formData.id_type,
+          purpose: formData.purpose,
+          special_requests: formData.special_requests,
+        };
+        if (discountType !== 'none' && discountValue) {
+          payload.discount_type = discountType;
+          payload.discount_value = discountValue;
+          payload.discount_reason = discountReason;
+        }
+        await updateBooking({ id: bookingToEdit.booking_id, data: payload }).unwrap();
+        onSuccess?.();
+        handleCleanup();
+      } catch (err) {
+        console.error('Failed to update booking:', err);
+      }
+      return;
+    }
 
     const fd = new FormData();
     fd.append('apartment_id', formData.apartment_id);
@@ -411,8 +497,12 @@ export default function AdminBookingModal({
               {/* Header */}
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-3xl flex items-center justify-between z-10">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Walk-in Booking</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">Register a walk-in guest</p>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {isEditMode ? 'Edit Booking' : 'Walk-in Booking'}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    {isEditMode ? `Editing booking for ${bookingToEdit?.name}` : 'Register a walk-in guest'}
+                  </p>
                 </div>
                 <button onClick={handleCleanup} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                   <X className="h-5 w-5 text-gray-500" />
@@ -543,13 +633,73 @@ export default function AdminBookingModal({
                   </div>
 
                   <div className="space-y-4">
-                    <div>
+                    {/* Guest autocomplete combobox */}
+                    <div className="relative">
                       <label className="block text-sm font-semibold text-gray-900 mb-1.5">Full Name *</label>
-                      <input
-                        type="text" name="name" value={formData.name} onChange={handleChange} required
-                        placeholder="Enter client's full name"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 placeholder:text-gray-400"
-                      />
+                      <div className="relative">
+                        <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <input
+                          ref={guestInputRef}
+                          type="text"
+                          name="name"
+                          value={guestSearch || formData.name}
+                          required
+                          placeholder="Type to search saved customers or enter a new name"
+                          autoComplete="off"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setGuestSearch(val);
+                            setFormData((p) => ({ ...p, name: val }));
+                            setShowGuestDropdown(true);
+                            if (guestSearchTimer.current) clearTimeout(guestSearchTimer.current);
+                            guestSearchTimer.current = setTimeout(() => setGuestSearchDebounced(val), 300);
+                          }}
+                          onFocus={() => { if (guestSearch.length >= 2) setShowGuestDropdown(true); }}
+                          onBlur={() => setTimeout(() => setShowGuestDropdown(false), 150)}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 placeholder:text-gray-400"
+                        />
+                      </div>
+                      {showGuestDropdown && guestProfiles.length > 0 && (
+                        <div
+                          ref={guestDropdownRef}
+                          className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto"
+                        >
+                          {guestProfiles.map((g) => (
+                            <button
+                              key={g.id}
+                              type="button"
+                              onMouseDown={() => {
+                                setGuestSearch(g.name);
+                                setFormData((p) => ({
+                                  ...p,
+                                  name: g.name,
+                                  email: g.email || p.email,
+                                  phone: g.phone || p.phone,
+                                  address: g.address || p.address,
+                                  id_type: g.id_type || p.id_type,
+                                }));
+                                setShowGuestDropdown(false);
+                              }}
+                              className="w-full text-left px-4 py-3 hover:bg-emerald-50 border-b border-gray-100 last:border-b-0 flex items-center gap-3"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-bold text-emerald-700">{g.name.charAt(0).toUpperCase()}</span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-900 truncate">{g.name}</p>
+                                <p className="text-xs text-gray-400 truncate">
+                                  {[g.phone, g.email].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {guestSearch.length >= 2 && guestProfiles.length === 0 && showGuestDropdown && (
+                        <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-gray-400">
+                          No saved customers found — a new profile will be created.
+                        </div>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -757,10 +907,16 @@ export default function AdminBookingModal({
                       Cancel
                     </button>
                     <button
-                      type="submit" disabled={loading || success}
+                      type="submit" disabled={loading || (!isEditMode && success)}
                       className="flex-1 bg-emerald-600 text-white px-6 py-3 rounded-xl hover:bg-emerald-700 font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {loading ? 'Creating…' : success ? 'Booking Created!' : 'Create Walk-in Booking'}
+                      {loading
+                        ? (isEditMode ? 'Saving…' : 'Creating…')
+                        : (!isEditMode && success)
+                          ? 'Booking Created!'
+                          : isEditMode
+                            ? 'Save Changes'
+                            : 'Create Walk-in Booking'}
                     </button>
                   </div>
                 </div>

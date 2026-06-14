@@ -144,6 +144,7 @@ export const apiSlice = createApi({
         'Role',
         'ActivityLog',
         'Apartment',
+        'GuestProfile',
     ],
     endpoints: () => ({}),
 });

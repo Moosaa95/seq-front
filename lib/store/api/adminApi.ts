@@ -166,6 +166,18 @@ export interface ApiPaginatedResponse<T> {
     results: T[];
 }
 
+export interface ApiGuestProfile {
+    id: number;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    id_type: string | null;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
 // Query parameters types
 interface BookingsQueryParams {
     status?: string;
@@ -334,6 +346,23 @@ export const adminApi = apiSlice.injectEndpoints({
                 { type: 'Booking', id: bookingId },
                 { type: 'Booking', id: 'LIST' },
             ],
+        }),
+
+        deleteBooking: builder.mutation<void, string>({
+            query: (bookingId) => ({
+                url: `/bookings/${bookingId}/`,
+                method: 'DELETE',
+            }),
+            invalidatesTags: (result, error, bookingId) => [
+                { type: 'Booking', id: bookingId },
+                { type: 'Booking', id: 'LIST' },
+            ],
+        }),
+
+        // Guest Profiles (saved customer details for quick booking lookup)
+        searchGuestProfiles: builder.query<ApiPaginatedResponse<ApiGuestProfile>, string>({
+            query: (search) => `/guest-profiles/${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+            providesTags: ['GuestProfile' as const],
         }),
 
         // Payments
@@ -618,5 +647,7 @@ export const {
     useGetActivityLogQuery,
     // Permissions
     useGetPermissionsQuery,
+    useDeleteBookingMutation,
+    useSearchGuestProfilesQuery,
 } = adminApi;
 

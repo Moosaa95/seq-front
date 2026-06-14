@@ -3,6 +3,16 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactCompiler: true,
+  async redirects() {
+    return [
+      // Browsers and crawlers request /favicon.ico directly — redirect to the generated icon
+      {
+        source: '/favicon.ico',
+        destination: '/icon',
+        permanent: false,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
