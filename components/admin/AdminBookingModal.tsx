@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, AlertCircle, Search, ChevronLeft, ChevronRight,
-  Upload, User, MapPin, FileText, Tag, UserCheck,
+  Upload, User, MapPin, FileText, Tag, UserCheck, CheckCircle2,
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -314,6 +314,15 @@ export default function AdminBookingModal({
   const [discountValue, setDiscountValue] = useState('');
   const [discountReason, setDiscountReason] = useState('');
 
+  const modalScrollRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top and show success state when booking is created
+  useEffect(() => {
+    if (success) {
+      modalScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [success]);
+
   // Pre-fill: calendar click (create mode) OR edit mode
   useEffect(() => {
     if (!isOpen) return;
@@ -488,12 +497,70 @@ export default function AdminBookingModal({
 
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
             <motion.div
+              ref={modalScrollRef}
               initial={{ opacity: 0, scale: 0.96, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
               transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
               className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto pointer-events-auto border border-gray-200"
             >
+              {/* ── SUCCESS STATE: replace form entirely after booking is created ── */}
+              {!isEditMode && success && bookingResult ? (
+                <>
+                  {/* Success header */}
+                  <div className="sticky top-0 bg-emerald-600 px-6 py-4 rounded-t-3xl flex items-center justify-between z-10">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-6 w-6 text-white shrink-0" />
+                      <div>
+                        <h2 className="text-lg font-bold text-white">Booking Created</h2>
+                        <p className="text-sm text-emerald-100 mt-0.5">
+                          {bookingResult.name} · {bookingResult.apartment_details?.title ?? '—'} · {bookingResult.check_in} → {bookingResult.check_out}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => { handleCleanup(); onSuccess?.(); }} className="p-2 hover:bg-emerald-700 rounded-full transition-colors">
+                      <X className="h-5 w-5 text-white" />
+                    </button>
+                  </div>
+
+                  {/* Booking summary strip */}
+                  <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                    <span className="text-emerald-700">
+                      <span className="font-semibold">Ref:</span> {bookingResult.booking_id}
+                    </span>
+                    <span className="text-emerald-700">
+                      <span className="font-semibold">Nights:</span> {bookingResult.nights}
+                    </span>
+                    <span className="text-emerald-700">
+                      <span className="font-semibold">Total:</span> {bookingResult.currency}{parseFloat(bookingResult.total_amount).toLocaleString()}
+                    </span>
+                  </div>
+
+                  {/* Payment ledger — full width, no extra chrome */}
+                  <div className="p-5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+                      Record Payment
+                    </p>
+                    <BookingPaymentLedger
+                      booking={bookingResult}
+                      onClose={() => { handleCleanup(); onSuccess?.(); }}
+                      inline
+                    />
+                  </div>
+
+                  {/* Done button */}
+                  <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => { handleCleanup(); onSuccess?.(); }}
+                      className="w-full py-3 border border-gray-300 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Done — Close
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
               {/* Header */}
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-3xl flex items-center justify-between z-10">
                 <div>
@@ -518,25 +585,6 @@ export default function AdminBookingModal({
                       <p className="text-sm font-semibold text-red-900">Booking Error</p>
                       <p className="text-sm text-red-700 mt-0.5">{errorMsg}</p>
                     </div>
-                  </div>
-                )}
-
-                {/* ── Step 2: Payment Ledger (shown after booking is created) ── */}
-                {success && bookingResult && (
-                  <div className="border-2 border-emerald-200 rounded-xl overflow-hidden">
-                    <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200">
-                      <p className="text-xs font-bold text-emerald-800">
-                        Booking Created — Record Payment Below
-                      </p>
-                      <p className="text-[11px] text-emerald-600">
-                        {bookingResult.booking_id} · {bookingResult.nights} night{bookingResult.nights !== 1 ? 's' : ''} · {bookingResult.currency}{parseFloat(bookingResult.total_amount).toLocaleString()}
-                      </p>
-                    </div>
-                    <BookingPaymentLedger
-                      booking={bookingResult}
-                      onClose={() => { handleCleanup(); onSuccess?.(); }}
-                      inline
-                    />
                   </div>
                 )}
 
@@ -921,6 +969,8 @@ export default function AdminBookingModal({
                   </div>
                 </div>
               </form>
+                </>
+              )}
             </motion.div>
           </div>
         </>
