@@ -14,7 +14,7 @@ import {
     isBefore,
     startOfDay,
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, X, User, Mail, Phone, MapPin, DollarSign, Calendar as CalendarIcon, Plus, AlertTriangle, Receipt } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, User, Mail, Phone, MapPin, DollarSign, Calendar as CalendarIcon, Plus, AlertTriangle, Receipt, Eye, Pencil, Ban } from 'lucide-react';
 import type { ApiBooking } from '@/lib/store/api/adminApi';
 import type { ApiApartment } from '@/lib/store/api/propertyApi';
 import type { BlockedDate } from '@/lib/store/api/calendarApi';
@@ -30,6 +30,9 @@ interface BookingsCalendarProps {
     onWalkInBook?: (apartment: ApiApartment, date: string) => void;
     onRaiseDispute?: (booking: ApiBooking) => void;
     onPrintReceipt?: (booking: ApiBooking) => void;
+    onViewMore?: (booking: ApiBooking) => void;
+    onEditBooking?: (booking: ApiBooking) => void;
+    onCancelBooking?: (booking: ApiBooking) => void;
 }
 
 const ROW_H = 40;
@@ -41,7 +44,7 @@ const STATUS_STYLES: Record<string, { bar: string; text: string }> = {
     completed: { bar: 'bg-blue-500',    text: 'text-white' },
 };
 
-export default function BookingsCalendar({ bookings, apartments, blockedDates = [], onStatusChange, onWalkInBook, onRaiseDispute, onPrintReceipt }: BookingsCalendarProps) {
+export default function BookingsCalendar({ bookings, apartments, blockedDates = [], onStatusChange, onWalkInBook, onRaiseDispute, onPrintReceipt, onViewMore, onEditBooking, onCancelBooking }: BookingsCalendarProps) {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedBooking, setSelectedBooking] = useState<ApiBooking | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -62,6 +65,16 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
     const days = useMemo(() => {
         return eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
     }, [currentMonth]);
+
+    // Scroll timeline to today on initial load (once window width is known)
+    useEffect(() => {
+        if (!scrollRef.current || windowWidth === 0) return;
+        const todayOffset = differenceInCalendarDays(today, days[0]);
+        if (todayOffset > 0 && todayOffset < days.length) {
+            scrollRef.current.scrollLeft = Math.max(0, (todayOffset - 2) * CELL_W);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [windowWidth]);
 
     const rangeStart = days[0];
     const totalDays = days.length;
@@ -268,7 +281,13 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                                                         const e = parseISO(bd.end_date);
                                                         return !isBefore(day, s) && isBefore(day, e);
                                                     });
-                                                    const isLocked = permLocked || rangeLocked;
+                                                    const activeBooking = aptBookings.find(b => {
+                                                        const s = parseISO(b.check_in);
+                                                        const e = parseISO(b.check_out);
+                                                        return !isBefore(day, s) && isBefore(day, e);
+                                                    });
+                                                    const isBooked = !!activeBooking;
+                                                    const isLocked = permLocked || rangeLocked || isBooked;
                                                     const canBook = !isPast && !isLocked && !!onWalkInBook;
                                                     return (
                                                         <div
@@ -282,7 +301,9 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                                                                 isLocked
                                                                     ? permLocked
                                                                         ? `${apt.title} is locked`
-                                                                        : `Blocked on ${format(day, 'MMM d')}`
+                                                                        : activeBooking
+                                                                            ? `Booked: ${activeBooking.name} (${format(parseISO(activeBooking.check_in), 'MMM d')} → ${format(parseISO(activeBooking.check_out), 'MMM d')})`
+                                                                            : `Blocked on ${format(day, 'MMM d')}`
                                                                     : canBook
                                                                         ? `Walk-in booking on ${format(day, 'MMM d')}`
                                                                         : undefined
@@ -517,28 +538,61 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                             )}
                         </div>
 
+                        {/* Primary actions: View More / Edit / Cancel */}
+                        <div className="p-4 border-t border-gray-200 space-y-2">
+                            {onViewMore && (
+                                <button
+                                    onClick={() => { onViewMore(selectedBooking); setSelectedBooking(null); }}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                                >
+                                    <Eye className="h-4 w-4" />
+                                    View More / Payment
+                                </button>
+                            )}
+                            <div className="flex gap-2">
+                                {onEditBooking && (
+                                    <button
+                                        onClick={() => { onEditBooking(selectedBooking); setSelectedBooking(null); }}
+                                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border border-gray-300 hover:bg-gray-50 transition-colors"
+                                        style={{ color: DARK }}
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                        Edit Booking
+                                    </button>
+                                )}
+                                {onCancelBooking && selectedBooking.status !== 'cancelled' && selectedBooking.status !== 'completed' && (
+                                    <button
+                                        onClick={() => { onCancelBooking(selectedBooking); setSelectedBooking(null); }}
+                                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
+                                    >
+                                        <Ban className="h-4 w-4" />
+                                        Cancel
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Status change + Dispute + Receipt */}
                         {onStatusChange && (
-                            <div className="p-4 border-t border-gray-200">
-                                <p className="text-xs text-gray-500 mb-2">Update status:</p>
+                            <div className="px-4 pb-2">
+                                <p className="text-xs text-gray-400 mb-2">Change status:</p>
                                 <div className="flex flex-wrap gap-2">
-                                    {(['confirmed', 'completed', 'cancelled'] as const).map(s => (
+                                    {(['confirmed', 'completed'] as const).map(s => (
                                         <button
                                             key={s}
                                             disabled={selectedBooking.status === s}
                                             onClick={() => { onStatusChange(selectedBooking.booking_id, s); setSelectedBooking(null); }}
-                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed
-                                                ${s === 'confirmed' ? 'bg-emerald-600 text-white hover:bg-emerald-700' :
-                                                  s === 'completed' ? 'bg-blue-600 text-white hover:bg-blue-700' :
-                                                                      'bg-red-600 text-white hover:bg-red-700'}`}
+                                            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                                                ${s === 'confirmed' ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' :
+                                                                      'bg-blue-100 text-blue-800 hover:bg-blue-200'}`}
                                         >
-                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                            Mark {s.charAt(0).toUpperCase() + s.slice(1)}
                                         </button>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Dispute + Receipt actions */}
                         <div className="px-4 pb-4 flex gap-2">
                             {onPrintReceipt && (
                                 <button

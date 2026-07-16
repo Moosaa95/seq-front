@@ -15,6 +15,7 @@ import { useGetApartmentsQuery } from '@/lib/store/api/propertyApi';
 import { useCreateBookingMutation, useUpdateBookingMutation, useSearchGuestProfilesQuery } from '@/lib/store/api/adminApi';
 import type { ApiApartment } from '@/lib/store/api/propertyApi';
 import type { ApiBooking } from '@/lib/store/api/adminApi';
+import type { BlockedDate } from '@/lib/store/api/calendarApi';
 import BookingPaymentLedger from '@/components/admin/BookingPaymentLedger';
 
 interface AdminBookingModalProps {
@@ -26,6 +27,8 @@ interface AdminBookingModalProps {
   initialCheckIn?: string;
   /** When provided, modal operates in edit mode */
   bookingToEdit?: ApiBooking;
+  bookings?: ApiBooking[];
+  blockedDates?: BlockedDate[];
 }
 
 interface BookingFormData {
@@ -57,10 +60,18 @@ function CalendarPicker({
   checkIn,
   checkOut,
   onSelect,
+  selectedApartmentId,
+  bookings = [],
+  blockedDates = [],
+  editingBookingId,
 }: {
   checkIn: string;
   checkOut: string;
   onSelect: (checkIn: string, checkOut: string) => void;
+  selectedApartmentId?: string;
+  bookings?: ApiBooking[];
+  blockedDates?: BlockedDate[];
+  editingBookingId?: string;
 }) {
   const [month, setMonth] = useState(() => (checkIn ? parseISO(checkIn) : new Date()));
   const [selecting, setSelecting] = useState<'checkIn' | 'checkOut'>(
@@ -85,13 +96,63 @@ function CalendarPicker({
   const checkInDate = checkIn ? parseISO(checkIn) : null;
   const checkOutDate = checkOut ? parseISO(checkOut) : null;
 
+  const isBlockedDay = (day: Date) => {
+    if (!selectedApartmentId) return false;
+    
+    // Check bookings overlap
+    const overlapsBooking = bookings.some(b => {
+      if (editingBookingId && b.booking_id === editingBookingId) return false;
+      if (b.status === 'cancelled') return false;
+      if (b.apartment_details?.id !== selectedApartmentId && b.apartment !== selectedApartmentId) return false;
+      const start = parseISO(b.check_in);
+      const end = parseISO(b.check_out);
+      return !isBefore(day, start) && isBefore(day, end);
+    });
+
+    // Check blocked dates overlap
+    const overlapsBlock = blockedDates.some(bd => {
+      if (bd.apartment !== selectedApartmentId) return false;
+      const start = parseISO(bd.start_date);
+      const end = parseISO(bd.end_date);
+      return !isBefore(day, start) && isBefore(day, end);
+    });
+
+    return overlapsBooking || overlapsBlock;
+  };
+
+  const isInvalidCheckOut = (day: Date) => {
+    if (!checkInDate) return false;
+    if (!isAfter(day, checkInDate)) return true;
+    if (!selectedApartmentId) return false;
+
+    // Check if there is any booking or block starting between checkInDate (inclusive) and day (exclusive)
+    const hasBookingOverlap = bookings.some(b => {
+      if (editingBookingId && b.booking_id === editingBookingId) return false;
+      if (b.status === 'cancelled') return false;
+      if (b.apartment_details?.id !== selectedApartmentId && b.apartment !== selectedApartmentId) return false;
+      const start = parseISO(b.check_in);
+      return !isBefore(start, checkInDate) && isBefore(start, day);
+    });
+
+    const hasBlockOverlap = blockedDates.some(bd => {
+      if (bd.apartment !== selectedApartmentId) return false;
+      const start = parseISO(bd.start_date);
+      return !isBefore(start, checkInDate) && isBefore(start, day);
+    });
+
+    return hasBookingOverlap || hasBlockOverlap;
+  };
+
   const handleDayClick = (day: Date) => {
     if (isBefore(day, today)) return;
+    if (isBlockedDay(day)) return;
 
     if (selecting === 'checkIn' || !checkIn) {
       onSelect(format(day, 'yyyy-MM-dd'), '');
       setSelecting('checkOut');
     } else {
+      if (isInvalidCheckOut(day)) return;
+
       if (checkInDate && isAfter(day, checkInDate)) {
         onSelect(checkIn, format(day, 'yyyy-MM-dd'));
         setSelecting('checkIn');
@@ -178,6 +239,10 @@ function CalendarPicker({
           {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
           {days.map((day) => {
             const past = isBefore(day, today);
+            const isBlocked = isBlockedDay(day);
+            const invalidCO = selecting === 'checkOut' && isInvalidCheckOut(day);
+            const isDisabled = past || isBlocked || invalidCO;
+
             const isCI = checkInDate ? isSameDay(day, checkInDate) : false;
             const isCO = checkOutDate ? isSameDay(day, checkOutDate) : false;
             const inRange = isInRange(day);
@@ -198,14 +263,14 @@ function CalendarPicker({
                   onClick={() => handleDayClick(day)}
                   onMouseEnter={() => setHovered(day)}
                   onMouseLeave={() => setHovered(null)}
-                  disabled={past}
+                  disabled={isDisabled}
                   className={[
                     'w-full aspect-square flex items-center justify-center text-sm rounded-full transition-colors',
-                    past ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer',
+                    isDisabled ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer',
                     isCI || isCO
                       ? 'bg-emerald-600 text-white hover:bg-emerald-700 font-bold'
                       : '',
-                    !isCI && !isCO && !past ? 'hover:bg-emerald-100 font-medium text-gray-800' : '',
+                    !isCI && !isCO && !isDisabled ? 'hover:bg-emerald-100 font-medium text-gray-800' : '',
                     todayMark && !isCI && !isCO ? 'ring-2 ring-emerald-400' : '',
                   ].filter(Boolean).join(' ')}
                 >
@@ -239,6 +304,8 @@ export default function AdminBookingModal({
   initialApartment,
   initialCheckIn,
   bookingToEdit,
+  bookings = [],
+  blockedDates = [],
 }: AdminBookingModalProps) {
   const isEditMode = !!bookingToEdit;
 
@@ -647,6 +714,10 @@ export default function AdminBookingModal({
                     onSelect={(ci, co) =>
                       setFormData((prev) => ({ ...prev, checkIn: ci, checkOut: co }))
                     }
+                    selectedApartmentId={selectedApartment?.id}
+                    bookings={bookings}
+                    blockedDates={blockedDates}
+                    editingBookingId={bookingToEdit?.booking_id}
                   />
                 </div>
 
@@ -721,10 +792,10 @@ export default function AdminBookingModal({
                                 setFormData((p) => ({
                                   ...p,
                                   name: g.name,
-                                  email: g.email || p.email,
-                                  phone: g.phone || p.phone,
-                                  address: g.address || p.address,
-                                  id_type: g.id_type || p.id_type,
+                                  email: g.email || '',
+                                  phone: g.phone || '',
+                                  address: g.address || '',
+                                  id_type: g.id_type || '',
                                 }));
                                 setShowGuestDropdown(false);
                               }}

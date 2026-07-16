@@ -456,6 +456,12 @@ export default function BookingsManagement() {
           }}
           onRaiseDispute={setDisputeBooking}
           onPrintReceipt={setReceiptBooking}
+          onViewMore={setPaymentLedgerBooking}
+          onEditBooking={setEditBooking}
+          onCancelBooking={(b) => {
+            setSelectedBookingId(b.booking_id);
+            setIsCancellationModalOpen(true);
+          }}
         />
       ) : viewMode === 'rooms' ? (
         /* Rooms / Block-Dates View */
@@ -990,6 +996,8 @@ export default function BookingsManagement() {
         }}
         initialApartment={walkInApartment}
         initialCheckIn={walkInCheckIn}
+        bookings={bookings}
+        blockedDates={blockedDates}
       />
 
       {/* Edit Booking Modal */}
@@ -1003,6 +1011,8 @@ export default function BookingsManagement() {
             toast.success('Booking updated');
           }}
           bookingToEdit={editBooking}
+          bookings={bookings}
+          blockedDates={blockedDates}
         />
       )}
 
