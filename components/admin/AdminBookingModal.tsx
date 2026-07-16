@@ -264,9 +264,20 @@ function CalendarPicker({
                   onMouseEnter={() => setHovered(day)}
                   onMouseLeave={() => setHovered(null)}
                   disabled={isDisabled}
+                  title={
+                    past
+                      ? 'Past date'
+                      : isBlocked
+                        ? 'Date is already booked'
+                        : invalidCO
+                          ? 'Selecting this checkout date would overlap with an existing booking'
+                          : undefined
+                  }
                   className={[
                     'w-full aspect-square flex items-center justify-center text-sm rounded-full transition-colors',
-                    isDisabled ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer',
+                    past ? 'text-gray-300 cursor-not-allowed' : '',
+                    !past && (isBlocked || invalidCO) ? 'bg-rose-50/70 text-rose-400 line-through cursor-not-allowed border border-rose-100' : '',
+                    !isDisabled ? 'cursor-pointer' : '',
                     isCI || isCO
                       ? 'bg-emerald-600 text-white hover:bg-emerald-700 font-bold'
                       : '',
@@ -282,16 +293,22 @@ function CalendarPicker({
         </div>
       </div>
 
-      <div className="border-t border-gray-200 px-4 py-2 bg-gray-50 text-center text-xs">
-        {!checkIn && <span className="text-gray-500">Click a date to set check-in</span>}
-        {checkIn && !checkOut && (
-          <span className="text-gray-500">Now click a date to set check-out</span>
-        )}
-        {nights > 0 && (
-          <span className="text-emerald-700 font-semibold">
-            {nights} night{nights !== 1 ? 's' : ''}
-          </span>
-        )}
+      <div className="border-t border-gray-200 px-4 py-2 bg-gray-50 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5 text-gray-400">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-50/70 border border-rose-200" />
+          <span>Booked</span>
+        </div>
+        <div>
+          {!checkIn && <span className="text-gray-500">Click a date to set check-in</span>}
+          {checkIn && !checkOut && (
+            <span className="text-gray-500">Now click a date to set check-out</span>
+          )}
+          {nights > 0 && (
+            <span className="text-emerald-700 font-semibold">
+              {nights} night{nights !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
