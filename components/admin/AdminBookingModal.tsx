@@ -146,9 +146,9 @@ function CalendarPicker({
 
   const handleDayClick = (day: Date) => {
     if (isBefore(day, today)) return;
-    if (isBlockedDay(day)) return;
 
     if (selecting === 'checkIn' || !checkIn) {
+      if (isBlockedDay(day)) return;
       onSelect(format(day, 'yyyy-MM-dd'), '');
       setSelecting('checkOut');
     } else {
@@ -158,6 +158,8 @@ function CalendarPicker({
         onSelect(checkIn, format(day, 'yyyy-MM-dd'));
         setSelecting('checkIn');
       } else {
+        // Restarting selection with a new check-in — this IS a check-in pick.
+        if (isBlockedDay(day)) return;
         onSelect(format(day, 'yyyy-MM-dd'), '');
         setSelecting('checkOut');
       }
@@ -240,7 +242,11 @@ function CalendarPicker({
           {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
           {days.map((day) => {
             const past = isBefore(day, today);
-            const isBlocked = isBlockedDay(day);
+            // isBlockedDay flags a day as occupied from its check-in (inclusive) —
+            // correct for picking a NEW check-in, but a checkout landing on the
+            // same day another confirmed booking starts is a valid turnover and
+            // must only be judged by isInvalidCheckOut, not isBlockedDay.
+            const isBlocked = selecting === 'checkIn' ? isBlockedDay(day) : false;
             const invalidCO = selecting === 'checkOut' && isInvalidCheckOut(day);
             const isDisabled = past || isBlocked || invalidCO;
 

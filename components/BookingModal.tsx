@@ -74,7 +74,9 @@ export default function BookingModal({ isOpen, onClose, propertyTitle, propertyI
       try {
         const start = parseISO(range.start);
         const end = parseISO(range.end);
-        const days = eachDayOfInterval({ start, end });
+        // end is the existing booking's checkout day — it's a valid turnover
+        // day for a new check-in, so exclude only [start, end).
+        const days = eachDayOfInterval({ start, end }).slice(0, -1);
         days.forEach(day => excludeDates.push(format(day, 'yyyy-MM-dd')));
       } catch (e) {
         console.error("Invalid date range", range);
