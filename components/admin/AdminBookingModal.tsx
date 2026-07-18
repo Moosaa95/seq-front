@@ -99,10 +99,11 @@ function CalendarPicker({
   const isBlockedDay = (day: Date) => {
     if (!selectedApartmentId) return false;
     
-    // Check bookings overlap
+    // Check bookings overlap — only confirmed bookings actually hold a date;
+    // pending bookings are unpaid/unconfirmed and must not block re-booking.
     const overlapsBooking = bookings.some(b => {
       if (editingBookingId && b.booking_id === editingBookingId) return false;
-      if (b.status === 'cancelled') return false;
+      if (b.status !== 'confirmed') return false;
       if (b.apartment_details?.id !== selectedApartmentId && b.apartment !== selectedApartmentId) return false;
       const start = parseISO(b.check_in);
       const end = parseISO(b.check_out);
@@ -128,7 +129,7 @@ function CalendarPicker({
     // Check if there is any booking or block starting between checkInDate (inclusive) and day (exclusive)
     const hasBookingOverlap = bookings.some(b => {
       if (editingBookingId && b.booking_id === editingBookingId) return false;
-      if (b.status === 'cancelled') return false;
+      if (b.status !== 'confirmed') return false;
       if (b.apartment_details?.id !== selectedApartmentId && b.apartment !== selectedApartmentId) return false;
       const start = parseISO(b.check_in);
       return !isBefore(start, checkInDate) && isBefore(start, day);

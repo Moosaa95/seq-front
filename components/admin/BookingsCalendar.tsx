@@ -281,7 +281,12 @@ export default function BookingsCalendar({ bookings, apartments, blockedDates = 
                                                         const e = parseISO(bd.end_date);
                                                         return !isBefore(day, s) && isBefore(day, e);
                                                     });
+                                                    // Only confirmed bookings actually hold a date — pending
+                                                    // bookings are unpaid/unconfirmed and must not block a
+                                                    // walk-in booking for the same date (they still render
+                                                    // below so staff can see them).
                                                     const activeBooking = aptBookings.find(b => {
+                                                        if (b.status !== 'confirmed') return false;
                                                         const s = parseISO(b.check_in);
                                                         const e = parseISO(b.check_out);
                                                         return !isBefore(day, s) && isBefore(day, e);
